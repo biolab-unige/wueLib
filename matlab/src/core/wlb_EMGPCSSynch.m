@@ -24,8 +24,8 @@ function status = wlb_EMGPCSSynch(varargin)
 		fnameFilters = p.Results.fnameFilters;
 
 		% get filenames within each path
-		pcsFileNames = dir(fullfile(path_pcs,'*PCS.xml'));
-		emgFileNames = dir(fullfile(path_emg,'*EMG.txt'));
+		pcsFileNames = dir(fullfile(path_pcs,'*pcs.xml'));
+		emgFileNames = dir(fullfile(path_emg,'*emg.txt'));
 
 		% check whether we have the same number of files 
 		assert(checkDataConsistency(pcsFileNames,emgFileNames));
@@ -42,8 +42,8 @@ function status = wlb_EMGPCSSynch(varargin)
 
 		for fileIdx = 1 : numel(pcsFileNames)
 
-				pcsFname = pcsFileNames(fileIdx).name;
-				emgFname = emgFileNames(fileIdx).name;
+				pcsFname = fullfile(path_pcs,pcsFileNames(fileIdx).name);
+				emgFname = fullfile(path_emg,emgFileNames(fileIdx).name);
 
 				% read pcs header file
 				[pcs_hdr, pcs_data] = wlb_readActivaPC( pcsFname );
@@ -198,8 +198,10 @@ function status = wlb_EMGPCSSynch(varargin)
 				write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);
 				write_brainvision_vhdr(p.Results.outdir, out_hdr);
 
-				status = 0;
+				
 		end % for files
+        
+        status = 0;
 end % function
 
 function tau = find_t_init(D,locs,chunks)
@@ -354,7 +356,7 @@ function bool = checkDataConsistency(fname_mod1, fname_mod2)
 end
 
 
-function locs = findTENSArtefact(data,fs)
+function newloc = findTENSArtefact(data,fs)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
 
@@ -363,24 +365,52 @@ function locs = findTENSArtefact(data,fs)
 		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
 		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
 		data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
-		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, .001, 1, 1,1,[]);
+		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-		thr = 3*std(data_bp);
-		[pks,locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
-		if(length(locs)>2)
+        pctg = 90;
+		thr = prctile(data_bp,pctg);
+        while(thr<0)
+            pctg = pctg +1;
+            thr = prctile(data_bp,pctg);        
+        end
+        
+		[pks,pks_locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
+		
+        if(length(pks_locs)>2)
 				[val,~] = sort(pks,'descend');
 				thr = val(3)+2*eps;
 		end
 
 		[locs] = find(abs(diff((data_bp>thr))));
-		if(length(locs)==3)
-				start_end = find(diff(locs)>5*fs);
-				if (start_end == 1)
-						locs = [1 locs];
-				else
-						locs = locs(1:2);
-				end
-		end
+        
+        newloc = [];
+        
+        if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+            for i=1:numel(pks)
+                loc = locs(find((locs-pks_locs(i))<5*fs)); %cerco le intersezioni piu vicine al picco
+                if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
+                    if(i==1)
+                        loc = [1 loc]; %hanno tagliato all'inizio
+                    else
+                        loc = [loc length(data_bp)];%hanno tagliato alla fine
+                    end
+                else
+                    loc = loc([1 end]); %intersezioni pari prendo le due piu esterne
+                end
+                newloc = [newloc loc];
+            end
+        else
+            newloc = locs;
+        end
+           
+% 		if(length(locs)==3)
+% 				start_end = find(diff(locs)>5*fs);
+% 				if (start_end == 1)
+% 						locs = [1 locs];
+% 				else
+% 						locs = locs(1:2);
+% 				end
+% 		end
 
 
 
