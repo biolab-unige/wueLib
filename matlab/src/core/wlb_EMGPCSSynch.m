@@ -1,17 +1,16 @@
-function status = bn_EMGPCSSynch(varargin)
-%BN_TENSSYNCH synchronize multiple files in the same vhdr/eeg file
-%	FLAG = BN_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
+function status = wlb_EMGPCSSynch(varargin)
+%WLB_TENSSYNCH synchronize multiple files in the same vhdr/eeg file
+%	FLAG = WLB_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
 %
 
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
-%
 
 		p = inputParser;
 		p.addRequired('path_emg',@ischar);
 		p.addRequired('path_pcs',@ischar);
 		p.addRequired('outdir',@ischar);
 		p.addOptional('path_events',[],@ischar)
-		p.addOptional('fnameFilters',[],@ischar);
+		p.addOptional('fnameFilters',{[]},@iscell);
 		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('emgCuttingTime',0,@isnumeric);
@@ -23,171 +22,187 @@ function status = bn_EMGPCSSynch(varargin)
 		path_events = p.Results.path_events;
 		fnameFilters = p.Results.fnameFilters;
 
+		% get filenames within each path
+		pcsFileNames = dir(fullfile(path_pcs,'*PCS.xml'));
+		emgFileNames = dir(fullfile(path_emg,'*EMG.txt'));
 
-    % read pcs header file
-    [pcs_hdr, pcs_data] = bn_readActivaPC( path_pcs);
-		[emg_hdr, emg_data] = bn_readEMG_wue( path_emg);
+		% check whether we have the same number of files 
+		assert(checkDataConsistency(pcsFileNames,emgFileNames));
 
+%		pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
+%		emgFileNames = filterFnames(emgFileNames,fnameFilters);
+
+		eventsInfo = [];
 		if ~isempty(p.Results.path_events)
-			eventsInfo					= bn_readExternalEventFile( path_events);
+			eventsInfo					= wlb_readExternalEventFile( path_events );
 		end
-   
-		% cut data if needed
-    pcs_data = pcs_data(:,(p.Results.pcsCuttingTime*...
-				pcs_hdr.SenseChannelConfig.TDSampleRate)+1:end);
-    emg_data = emg_data(:,(p.Results.emgCuttingTime*emg_hdr.freq)+1:end);
 
-    % pick the first channel
-    pcs_ch_idx = p.Results.pcsRefChannel;
-		emg_ch_idx = find(ismember(emg_hdr.labels,'artefakt')==1);
+		for fileIdx = 1 : numel(pcsFileNames)
 
-		pcs_ch = pcs_data(pcs_ch_idx,:);
-		emg_ch = emg_data(emg_ch_idx,:);
-	
-		% search for the TENS artefact 
-		pcs_locs = findTENSArtefact(pcs_data(pcs_ch_idx,:),pcs_hdr.SenseChannelConfig.TDSampleRate);
-		emg_locs = findTENSArtefact(emg_data(emg_ch_idx,:),emg_hdr.freq);
+				pcsFname = pcsFileNames(fileIdx).name;
+				emgFname = emgFileNames(fileIdx).name;
 
-    method = min([length(pcs_locs)/2,length(emg_locs)/2]);
-		pcs_locs = pcs_locs(1:method*2);
-		emg_locs = emg_locs(1:method*2);
-    
-    % actually compute t0 for all channels
-    data_cell = [{pcs_ch},{emg_ch}];
-    
-    t0 = cellfun(@find_t_init,data_cell,{pcs_locs,emg_locs},...
-					{pcs_hdr.SenseChannelConfig.TDSampleRate,emg_hdr.freq},...
-					{method, method},'uni',false);
+				% read pcs header file
+				[pcs_hdr, pcs_data] = wlb_readActivaPC( pcsFname );
+				[emg_hdr, emg_data] = wlb_readEMG_wue( emgFname );
+			 
+				% cut data if needed
+				pcs_data = pcs_data(:,(p.Results.pcsCuttingTime*...
+						pcs_hdr.SenseChannelConfig.TDSampleRate)+1:end);
+				emg_data = emg_data(:,(p.Results.emgCuttingTime*emg_hdr.freq)+1:end);
 
-    t0 = reshape([t0{:}],2,2)';
-       
-    if( method == 2 )
-        % estimate the correct fs for PCS
-        pcs_fs = (t0(2,2)-t0(2,1))* emg_hdr.Fs /(t0(1,2)-t0(1,1));
-    else
-				% use default
-        t0(:,2) = [length(pcs_ch) length(emg_ch)];
-				if pcs_hdr.SenseChannelConfig.TDSampleRate > 422
-	        pcs_fs = 793.65;
+				% pick the first channel
+				pcs_ch_idx = p.Results.pcsRefChannel;
+				emg_ch_idx = find(ismember(emg_hdr.labels,'artefakt')==1);
+
+				pcs_ch = pcs_data(pcs_ch_idx,:);
+				emg_ch = emg_data(emg_ch_idx,:);
+			
+				% search for the TENS artefact 
+				pcs_locs = findTENSArtefact(pcs_data(pcs_ch_idx,:),pcs_hdr.SenseChannelConfig.TDSampleRate);
+				emg_locs = findTENSArtefact(emg_data(emg_ch_idx,:),emg_hdr.freq);
+
+				method = min([length(pcs_locs)/2,length(emg_locs)/2]);
+				pcs_locs = pcs_locs(1:method*2);
+				emg_locs = emg_locs(1:method*2);
+				
+				% actually compute t0 for all channels
+				data_cell = [{pcs_ch},{emg_ch}];
+				
+				t0 = cellfun(@find_t_init,data_cell,{pcs_locs,emg_locs},...
+							{method, method},'uni',false);
+
+				t0 = reshape([t0{:}],2,2)';
+					 
+				if( method == 2 )
+						% estimate the correct fs for PCS
+						pcs_fs = (t0(2,2)-t0(2,1))* emg_hdr.Fs /(t0(1,2)-t0(1,1));
 				else
-					pcs_fs = 422;
+						% use default
+						t0(:,2) = [length(pcs_ch) length(emg_ch)];
+						if pcs_hdr.SenseChannelConfig.TDSampleRate > 422
+							pcs_fs = 793.65;
+						else
+							pcs_fs = 422;
+						end
 				end
-    end
-       
-    % downsample pcs data to integer sampling frequency and eeg accordingly
-    fs 							= 400;
-    [pcs_data,~,~] 	= ResampleCascade(pcs_data,fs,pcs_fs);
-    emg_data 				= resample(emg_data',fs,emg_hdr.freq)';
-    
-		% each t0 row represent eeg,pcs,emg data before
-		% we have to recompute the exact point in time after
-		% resampling
-    t0(2,:) = (round(t0(2,:)/emg_hdr.freq*pcs_fs));
-    t0 			= round(t0/pcs_fs*fs);
-           
-		% also compute the sample indices fo each events with new sampling freq
-		for evIdx = 1:numel(eventsInfo)
-				eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)...
-						+ min(t0(:,1));
+					 
+				% downsample pcs data to integer sampling frequency and eeg accordingly
+				fs 							= 400;
+				[pcs_data,~,~] 	= ResampleCascade(pcs_data,fs,pcs_fs);
+				emg_data 				= resample(emg_data',fs,emg_hdr.freq)';
+				
+				% each t0 row represent eeg,pcs,emg data before
+				% we have to recompute the exact point in time after
+				% resampling
+				t0(2,:) = (round(t0(2,:)/emg_hdr.freq*pcs_fs));
+				t0 			= round(t0/pcs_fs*fs);
+							 
+				% also compute the sample indices fo each events with new sampling freq
+				for evIdx = 1:numel(eventsInfo)
+						eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)...
+								+ min(t0(:,1));
 
-				eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
-		end
+						eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
+				end
 
 
-    % t0 has start and end samples foreach channel
-    % cut data to have the same number of samples
-    onset  			= min(t0(:,1));
-    off 		 		= [1 -1;1 -1] * onset ;
-    data_wnd		= t0 - off;
+				% t0 has start and end samples foreach channel
+				% cut data to have the same number of samples
+				onset  			= min(t0(:,1));
+				off 		 		= [1 -1;1 -1] * onset ;
+				data_wnd		= t0 - off;
 
-    pcs_data_out 	= pcs_data(:,1+data_wnd(1,1):...
-				min([data_wnd(1,2),length(pcs_data)]));
+				pcs_data_out 	= pcs_data(:,1+data_wnd(1,1):...
+						min([data_wnd(1,2),length(pcs_data)]));
 
-    emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
-				min([data_wnd(2,2),length(emg_data)]));
-    
-    final_size   	= min([size(pcs_data_out,2),....
-												size(emg_data_out,2)]);
-    data_out 	 		= [pcs_data_out(:,1:final_size);...
-										emg_data_out(:,1:final_size)];
-    
-    pcs_channels	= size(pcs_data,1);
-		emg_channels  = size(emg_data,1);
-    
-    if(pcs_channels == 1)
-        data_out  = [data_out; zeros(1,size(data_out,2))];
-				pcs_channels = 2;
-    end
-    
-    pcs_hdr.labels(end+1) 	= {'none'};
-		pcs_hdr.chanUnits(pcs_channels) = {'mV'};
-		out_hdr.chanunit = [pcs_hdr.chanUnits, emg_hdr.units];
-    
-		wnd_plot = -100:100;
-    figure(1), clf
-    subplot(211)
-		hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(1)).*1e5,'r');
-		plot(emg_data(emg_ch_idx,wnd_plot + t0(2)),'k');
+				emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
+						min([data_wnd(2,2),length(emg_data)]));
+				
+				final_size   	= min([size(pcs_data_out,2),....
+														size(emg_data_out,2)]);
+				data_out 	 		= [pcs_data_out(:,1:final_size);...
+												emg_data_out(:,1:final_size)];
+				
+				pcs_channels	= size(pcs_data,1);
+				emg_channels  = size(emg_data,1);
+				
+				if(pcs_channels == 1)
+						data_out  = [data_out; zeros(1,size(data_out,2))];
+						pcs_channels = 2;
+				end
+				
+				pcs_hdr.labels(end+1) 	= {'none'};
+				pcs_hdr.chanUnits(pcs_channels) = {'mV'};
+				out_hdr.chanunit = [pcs_hdr.chanUnits, emg_hdr.units];
+				
+				wnd_plot = -100:100;
+				figure(1), clf
+				subplot(211)
+				hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(1)).*1e5,'r');
+				plot(emg_data(emg_ch_idx,wnd_plot + t0(2)),'k');
 
-    if(method == 2)
-        subplot(312)
-				hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(3)).*10,'r');
-				plot(emg_data(emg_ch_idx,wnd_plot+ t0(4)),'k');
-    end
-    drawnow
-    
-    % update header info
-   	out_hdr.label 	= [pcs_hdr.labels';emg_hdr.labels'];
-    out_hdr.nChans 	= pcs_channels + emg_channels;
-    out_hdr.NumberOfChannels = out_hdr.nChans;
-    out_hdr.Fs			= fs;
-		out_hdr.chanunit(out_hdr.nChans) = {'mV'};
-    
-    for ii = 1:2
+				if(method == 2)
+						subplot(312)
+						hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(3)).*10,'r');
+						plot(emg_data(emg_ch_idx,wnd_plot+ t0(4)),'k');
+				end
+				drawnow
+				
+				% update header info
+				out_hdr.label 	= [pcs_hdr.labels';emg_hdr.labels'];
+				out_hdr.nChans 	= pcs_channels + emg_channels;
+				out_hdr.NumberOfChannels = out_hdr.nChans;
+				out_hdr.Fs			= fs;
+				out_hdr.chanunit(out_hdr.nChans) = {'mV'};
+				
+				for ii = 1:2
 
-        stn_pos_struct(ii)  = struct('type','stn',...
-            'labels',pcs_hdr.labels(ii),...
-            'sph_theta_besa',-134,...
-            'sph_phi_besa',-45);
-    end
+						stn_pos_struct(ii)  = struct('type','stn',...
+								'labels',pcs_hdr.labels(ii),...
+								'sph_theta_besa',-134,...
+								'sph_phi_besa',-45);
+				end
 
-		for ii = 1:emg_channels
+				for ii = 1:emg_channels
 
-        emg_pos_struct(ii)  = struct('type','emg',...
-            'labels',emg_hdr.labels(ii),...
-            'sph_theta_besa',-134,...
-            'sph_phi_besa',-45);
+						emg_pos_struct(ii)  = struct('type','emg',...
+								'labels',emg_hdr.labels(ii),...
+								'sph_theta_besa',-134,...
+								'sph_phi_besa',-45);
 
-		end
-    
-    out_hdr.layout.pos = [stn_pos_struct, emg_pos_struct];
-		out_hdr.chantype(out_hdr.nChans) = {'other'};
-    
-    % this is the only supported data format
-    out_hdr.DataFormat      = 'BINARY';
-    out_hdr.DataOrientation = 'MULTIPLEXED';
-    out_hdr.BinaryFormat    = 'IEEE_FLOAT_32';
+				end
+				
+				out_hdr.layout.pos = [stn_pos_struct, emg_pos_struct];
+				out_hdr.chantype(out_hdr.nChans) = {'other'};
+				
+				% this is the only supported data format
+				out_hdr.DataFormat      = 'BINARY';
+				out_hdr.DataOrientation = 'MULTIPLEXED';
+				out_hdr.BinaryFormat    = 'IEEE_FLOAT_32';
 
-		% no additional calibration needed, since float32
-    out_hdr.resolution      = ones(size(out_hdr.label));      
+				% no additional calibration needed, since float32
+				out_hdr.resolution      = ones(size(out_hdr.label));      
 
-    % write data
-		[~, fname_pcs, ~] = fileparts(path_pcs);
-		fname_pcs_parts = regexp(fname_pcs,'_','split');
-    filename = strjoin({fname_pcs_parts{1:2},[fname_pcs_parts{3},'-PCS'],...
-				fname_pcs_parts{4:end-1}},'_');
+				% write data
+				[~, fname_pcs, ~] = fileparts(pcsFname);
+				filename = strcat(fname_pcs,'_EMG');
+				
+				out_hdr.DataFile = strcat(filename,'.eeg');
+				out_hdr.MarkerFile = strcat(filename,'.vmrk');
+				
+				write_brainvision_eeg(p.Results.outdir, out_hdr, data_out);
+				write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);
+				write_brainvision_vhdr(p.Results.outdir, out_hdr);
 
-    out_hdr.DataFile = strcat(filename,'.eeg');
-    out_hdr.MarkerFile = strcat(filename,'.vmrk');
-    
-    write_brainvision_eeg(p.Results.outdir, out_hdr, data_out);
-    write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);
-    write_brainvision_vhdr(p.Results.outdir, out_hdr);
+				status = 0;
+		end % for files
+end % function
 
-		status = 0;
-end
-
-function tau = find_t_init(D,locs,Fs,chunks)
+function tau = find_t_init(D,locs,chunks)
+%FIND_T_INIT Description
+%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
+%
 
 % number of levels used for WICA and wavelet family
 num_lvl   = 8;
@@ -264,7 +279,8 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
     Rates = Pfac./Qfac;  % rates per step
     CRate = cumprod(Rates); % cumulative resampling rates
 
-    % We can't go below min(1,P/Q) without losing information. Because of low-pass filtering, don't be too precise
+    % We can't go below min(1,P/Q) without losing information. Because of low-pass filtering, 
+		% don't be too precise
     Problem = CRate < (0.9 * P/Q);
     if any(Problem)
         fprintf(1, 'RESAMPLE> Warning: Desired rate is %.f\n', P/Q);
@@ -301,27 +317,33 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
     end
 end
 
-function fname = filterFnames(fname,pattern)
-
-		tmp = [{fname.name}];
+function fnames = filterFnames(fnames,pattern)
+%FILTERFNAMES Description
+%	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
+%
+		
+		tmp = [{fnames.name}];
 		mask = ~cellfun(@isempty,regexp(tmp,pattern));
-		fname = fname(mask);
+		fnames = fnames(mask);
 end
 
-function bool = checkDataConsistency(fname_hdeeg, fname_pcs)
+function bool = checkDataConsistency(fname_mod1, fname_mod2)
+%CHECKDATACONSISTENCY Description
+%	BOOL = CHECKDATACONSISTENCY(FNAME_MOD1, FNAME_MOD2) Long description
+%
 
-		fname_hdeeg = [{fname_hdeeg.name}];
-		fname_pcs = [{fname_pcs.name}];
+		fname_mod1 = [{fname_mod1.name}];
+		fname_mod2 = [{fname_mod2.name}];
 
-		[~,hdeeg,~] = cellfun(@fileparts,fname_hdeeg,'uni',false);
-		[~,pcs,~] 	= cellfun(@fileparts,fname_pcs,'uni',false);
+		[~,mod1,~] = cellfun(@fileparts,fname_mod1,'uni',false);
+		[~,mod2,~] 	= cellfun(@fileparts,fname_mod2,'uni',false);
 
-		nEEGFiles = numel(hdeeg);
-		nPCSFiles = numel(pcs);
+		nMod1Files = numel(mod1);
+		nMod2Files = numel(mod2);
 
-		nMatchingFiles = sum(ismember(hdeeg,pcs));
+		nMatchingFiles = sum(ismember(mod1,mod2));
 
-		if nEEGFiles == nPCSFiles || nMatchingFiles == nEEGFiles
+		if nMod1Files == nMod2Files || nMatchingFiles == Mod1Files
 				bool = true;
 		else
 				bool = false;
@@ -334,16 +356,16 @@ function locs = findTENSArtefact(data,fs)
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
 
 		data = abs(data);
-		data_bp = process_bandpass('Compute', data, fs, 90, 110, [],1);
-		data_bp(:,:,2) = process_bandpass('Compute', data, fs, 190, 210, [],1);
-		data_bp(:,:,3) = process_bandpass('Compute', data, fs, 290, 310, [],1);
-		data_bp = process_bandpass('Compute', ...
-				mean(abs(data_bp(:,:,:)),3), fs, .001, 1, [],1);
+
+		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
+		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
+		data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, .001, 1, 1,1,[]);
 
 		thr = 3*std(data_bp);
 		[pks,locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
 		if(length(locs)>2)
-				[val,idx] = sort(pks,'descend');
+				[val,~] = sort(pks,'descend');
 				thr = val(3)+2*eps;
 		end
 
@@ -360,5 +382,3 @@ function locs = findTENSArtefact(data,fs)
 
 
 end
-
-
