@@ -1,9 +1,11 @@
-function [hdr data]= bn_readEMG_wue(filename)
-% bn_readEMG_wue
+function [hdr data]= wlb_readEMG_wue(filename)
+% wlb_readEMG_wue
 
 % Edited 2014-09-19 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 
-fid = fopen(filename,'r');
+[p,f,~] = fileparts(filename);
+
+fid = fopen(fullfile(p,[f,'.txt']),'r');
 
 hdr.person 	= fgetl(fid);
 hdr.sex			= fgetl(fid);

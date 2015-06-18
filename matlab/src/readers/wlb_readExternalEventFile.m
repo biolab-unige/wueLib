@@ -1,4 +1,4 @@
-function eventStruct = bn_readExternalEventFile(filename)
+function eventStruct = wlb_readExternalEventFile(filename)
 %BN_READEXTERNALEVENTFILE reads and external event file with comma separated values where 
 %	number of rows represents single events and number of colmuns representes event types
 %	EVENTSTRUCT = BN_READEXTERNALEVENTFILE(FILENAME) Long description

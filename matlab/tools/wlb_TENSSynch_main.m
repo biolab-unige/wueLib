@@ -1,4 +1,4 @@
-function status = bn_TENSSynch_main(varargin)
+function status = wlb_TENSSynch_main(varargin)
 %BN_TENSSYNCH_MAIN Main interface for synchrnization wue data
 %	FLAG = BN_TENSSYNCH_MAIN(VARARGIN) 
 
@@ -16,7 +16,7 @@ p = inputParser;
 p.addParamValue('path_pcs',[],@ischar);
 p.addParamValue('path_emg',[],@ischar);
 p.addParamValue('path_hdeeg',[],@ischar);
-p.addParamValue('path_events',[],@ischar);
+p.addParamValue('path_events','',@ischar);
 p.addParamValue('events_label',[],@ischar);
 p.addParamValue('outdir',[],@ischar);
 
@@ -36,9 +36,9 @@ if ~isempty(p.Results.path_pcs)
 		recordingModalities{3} = 'pcs';	
 end
 
-if ~isempty(p.Results.path_events)
+% if ~isempty(p.Results.path_events)
 		path_events = p.Results.path_events;
-end
+% end
 
 if(isempty(p.Results.outdir))
 		% search for a non-empty directory between recordingModalities
@@ -69,13 +69,13 @@ recordingModalities = strjoin(recordingModalities,'_');
 
 switch recordingModalities
 		case 'eeg_emg'
-				status = bn_EEGEMGSynch(path_hdeeg,path_emg);
+				status = wlb_EEGEMGSynch(path_hdeeg,path_emg);
 		case 'eeg_emg_pcs'
-				status = bn_EEGEMGPCSSynch(path_hdeeg,path_emg,path_pcs);
+				status = wlb_EEGEMGPCSSynch(path_hdeeg,path_emg,path_pcs);
 		case 'emg_pcs'
-				status = bn_EMGPCSSynch(path_emg,path_pcs,outdir,path_events);
+				status = wlb_EMGPCSSynch(path_emg,path_pcs,outdir,path_events);
 		case 'eeg_pcs'
-				status = bn_EEGPCSSynch(path_hdeeg,path_pcs);
+				status = wlb_EEGPCSSynch(path_hdeeg,path_pcs);
 		otherwise
 				status = -1;
 				error('Unsupported modality');

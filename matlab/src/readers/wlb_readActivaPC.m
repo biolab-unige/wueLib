@@ -1,4 +1,4 @@
-function [hdr, data] = bn_readActivaPC(filename)
+function [hdr, data] = wlb_readActivaPC(filename)
 %BN_READACTIVAPC read PC+s xml/txt files 
 %	[HDR, DATA] = BN_READACTIVAPC(FILENAME)
 %	data [ch,time] represents pcs data in mV 

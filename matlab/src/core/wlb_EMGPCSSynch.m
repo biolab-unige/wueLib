@@ -1,7 +1,6 @@
 function status = wlb_EMGPCSSynch(varargin)
 %WLB_TENSSYNCH synchronize multiple files in the same vhdr/eeg file
 %	FLAG = WLB_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
-%
 
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 
@@ -9,8 +8,10 @@ function status = wlb_EMGPCSSynch(varargin)
 		p.addRequired('path_emg',@ischar);
 		p.addRequired('path_pcs',@ischar);
 		p.addRequired('outdir',@ischar);
+
 		p.addOptional('path_events',[],@ischar)
 		p.addOptional('fnameFilters',{[]},@iscell);
+
 		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('emgCuttingTime',0,@isnumeric);
@@ -29,8 +30,10 @@ function status = wlb_EMGPCSSynch(varargin)
 		% check whether we have the same number of files 
 		assert(checkDataConsistency(pcsFileNames,emgFileNames));
 
+
 %		pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
 %		emgFileNames = filterFnames(emgFileNames,fnameFilters);
+
 
 		eventsInfo = [];
 		if ~isempty(p.Results.path_events)
