@@ -5,12 +5,6 @@ function status = wlb_TENSSynch_main(varargin)
 
 % Edited 2014-09-22 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 
-%%% DEFINE SUPPORTED FILE EXTENSIONS %%%%
-%ext_hdeeg 				= '*.eeg';
-%ext_pcs 					= '*.xml';
-%ext_emg 					= '*.txt';
-%event_timeoffset 	= 0;
-
 %%% DEFINE INPUT STRUCTURE %%%
 p = inputParser;
 p.addParamValue('path_pcs',[],@ischar);
@@ -58,12 +52,6 @@ else
 		outdir = p.Results.outdir;
 end
 
-%if(~isempty(p.Results.events_path))
-%    event_timeoffset = 1;
-%    event_offset_dir = p.Results.events_path;
-%    event_marker_label = p.Results.events_labels;
-%end
-
 recordingModalities(cellfun(@isempty,recordingModalities)) = [];
 recordingModalities = strjoin(recordingModalities,'_');
 
@@ -79,6 +67,5 @@ switch recordingModalities
 		otherwise
 				status = -1;
 				error('Unsupported modality');
-end
 
 end
