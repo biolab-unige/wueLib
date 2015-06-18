@@ -11,7 +11,7 @@ p.addParamValue('path_pcs',[],@ischar);
 p.addParamValue('path_emg',[],@ischar);
 p.addParamValue('path_hdeeg',[],@ischar);
 p.addParamValue('path_events','',@ischar);
-p.addParamValue('events_label',[],@ischar);
+p.addParamValue('fNameFilters',[],@ischar);
 p.addParamValue('outdir',[],@ischar);
 
 p.parse(varargin{:});
@@ -30,9 +30,8 @@ if ~isempty(p.Results.path_pcs)
 		recordingModalities{3} = 'pcs';	
 end
 
-% if ~isempty(p.Results.path_events)
-		path_events = p.Results.path_events;
-% end
+path_events = p.Results.path_events;
+fnameFilters = p.Results.fNameFilters;
 
 if(isempty(p.Results.outdir))
 		% search for a non-empty directory between recordingModalities
@@ -61,7 +60,7 @@ switch recordingModalities
 		case 'eeg_emg_pcs'
 				status = wlb_EEGEMGPCSSynch(path_hdeeg,path_emg,path_pcs);
 		case 'emg_pcs'
-				status = wlb_EMGPCSSynch(path_emg,path_pcs,outdir,path_events);
+				status = wlb_EMGPCSSynch(path_emg,path_pcs,outdir,path_events,fnameFilters);
 		case 'eeg_pcs'
 				status = wlb_EEGPCSSynch(path_hdeeg,path_pcs);
 		otherwise

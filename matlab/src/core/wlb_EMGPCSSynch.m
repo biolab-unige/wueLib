@@ -3,14 +3,14 @@ function status = wlb_EMGPCSSynch(varargin)
 %	FLAG = WLB_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
 
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
-
+		
 		p = inputParser;
 		p.addRequired('path_emg',@ischar);
 		p.addRequired('path_pcs',@ischar);
 		p.addRequired('outdir',@ischar);
 
 		p.addOptional('path_events',[],@ischar)
-		p.addOptional('fnameFilters',{[]},@iscell);
+		p.addOptional('fnameFilters',[],@ischar);
 
 		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
@@ -27,23 +27,40 @@ function status = wlb_EMGPCSSynch(varargin)
 		pcsFileNames = dir(fullfile(path_pcs,'*pcs.xml'));
 		emgFileNames = dir(fullfile(path_emg,'*emg.txt'));
 
+		eveFileNames = dir(fullfile(path_events,'*events.csv'));
+
 		% check whether we have the same number of files 
 		assert(checkDataConsistency(pcsFileNames,emgFileNames));
-
-
-%		pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
-%		emgFileNames = filterFnames(emgFileNames,fnameFilters);
-
-
-		eventsInfo = [];
-		if ~isempty(p.Results.path_events)
-			eventsInfo					= wlb_readExternalEventFile( path_events );
+		
+		if ~isempty(fnameFilters)
+				pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
+				emgFileNames = filterFnames(emgFileNames,fnameFilters);
 		end
 
 		for fileIdx = 1 : numel(pcsFileNames)
 
 				pcsFname = fullfile(path_pcs,pcsFileNames(fileIdx).name);
 				emgFname = fullfile(path_emg,emgFileNames(fileIdx).name);
+
+				% files has been renamed to match 
+				% subject_studyName_drug_trial##_modality.**
+				drugCondition = regexp(pcsFname,'_','split');
+
+				% pick drug string
+				drugCondition = drugCondition{3};
+
+				trialIdx = cell2mat(regexp(pcsFname,'trial\d+','match'));
+				trialIdx = str2num(cell2mat(regexp(trialIdx,'\d+','match')));
+				eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
+				eveFname = fullfile(path_events,eveFname.name);
+
+				fprintf('Synch %s and %s\n',pcsFname,emgFname);
+
+
+				eventsInfo = [];
+				if ~isempty(p.Results.path_events)
+					eventsInfo = wlb_readExternalEventFile( eveFname, trialIdx );
+				end
 
 				% read pcs header file
 				[pcs_hdr, pcs_data] = wlb_readActivaPC( pcsFname );
@@ -198,10 +215,9 @@ function status = wlb_EMGPCSSynch(varargin)
 				write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);
 				write_brainvision_vhdr(p.Results.outdir, out_hdr);
 
-				
 		end % for files
-        
-        status = 0;
+
+  	status = 0;
 end % function
 
 function tau = find_t_init(D,locs,chunks)
@@ -327,7 +343,7 @@ function fnames = filterFnames(fnames,pattern)
 %	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
 %
 		
-		tmp = [{fnames.name}];
+		tmp = {fnames.name};
 		mask = ~cellfun(@isempty,regexp(tmp,pattern));
 		fnames = fnames(mask);
 end
@@ -337,8 +353,8 @@ function bool = checkDataConsistency(fname_mod1, fname_mod2)
 %	BOOL = CHECKDATACONSISTENCY(FNAME_MOD1, FNAME_MOD2) Long description
 %
 
-		fname_mod1 = [{fname_mod1.name}];
-		fname_mod2 = [{fname_mod2.name}];
+		fname_mod1 = {fname_mod1.name};
+		fname_mod2 = {fname_mod2.name};
 
 		[~,mod1,~] = cellfun(@fileparts,fname_mod1,'uni',false);
 		[~,mod2,~] 	= cellfun(@fileparts,fname_mod2,'uni',false);

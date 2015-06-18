@@ -25,7 +25,7 @@ for file = 1:numel(fileNames_pcs)
 						fprintf(fid,mesg);
 				end
 
-        end
+     end
         
         newFileName_emg= strjoin([subjectNames(file),experiments(file),...
 													drug(file),{strcat('trial',num2str(trial(file)))},'emg'],'_');
