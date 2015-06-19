@@ -73,7 +73,7 @@ function status = wlb_EMGPCSSynch(varargin)
 
 				% pick the first channel
 				pcs_ch_idx = p.Results.pcsRefChannel;
-				emg_ch_idx = find(ismember(emg_hdr.labels,'artefakt')==1);
+				emg_ch_idx = find(ismember(lower(emg_hdr.labels),'digital_pulse')==1);
 
 				pcs_ch = pcs_data(pcs_ch_idx,:);
 				emg_ch = emg_data(emg_ch_idx,:);
@@ -140,12 +140,12 @@ function status = wlb_EMGPCSSynch(varargin)
 % 				emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
 % 						min([data_wnd(2,2),length(emg_data)]));
                 
-                pcs_data_out 	= pcs_data(:,max(1,t0(1,1)-t0(2,1)):end);
+        pcs_data_out 	= pcs_data(:,max(1,t0(1,1)-t0(2,1)):end);
 				emg_data_out 	= emg_data(:,max(1,t0(2,1)-t0(1,1)):end);
 				
 				final_size   	= min([t0(:,2)' size(pcs_data_out,2),size(emg_data_out,2)]);
                                                     
-                pcs_data_out 	= pcs_data_out(:,1:final_size);
+        pcs_data_out 	= pcs_data_out(:,1:final_size);
 				emg_data_out 	= emg_data_out(:,1:final_size);
                                                     
 				data_out 	 		= [pcs_data_out;emg_data_out];
@@ -277,17 +277,19 @@ function tau = find_t_init(D,locs,fs,chunks)
 				
 				[~, max_locs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
 %				[~, min_locs] = findpeaks(-(out),'MINPEAKHEIGHT',thresh);  
-
 %				data_locs = max(max(max_locs),max(min_locs));
 				data_locs = max(max_locs);				
 			
 				t = linspace(0,100,nsamples);
+				tau(chunk+1) = data_locs + artefactIdx(1)-1;
+
 				figure,
 				subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
 				subplot(2,1,2), plot(t,data(1:nsamples),t(data_locs),data(data_locs),'rx');
 
-				tau(chunk+1) = data_locs + locs(1+2*chunk)-1;
-		end
+				end
+		figure,
+		plot(D) , hold on, plot(tau,D(tau),'rx');
 
 end
 
@@ -400,8 +402,12 @@ function newloc = findTENSArtefact(data,fs)
 		data = abs(data);
 
 		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
-		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
-		data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+		if fs > 700
+
+			data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
+			data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+			
+		end
 		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 0.5, 1,1,[]);
 
     pctg = 90;

@@ -66,10 +66,13 @@ for ii = 1:4
 	end
 end
 
+labels = strcat(labels,'_seeg');
+
 hdr.labels = labels;
 hdr.recordingChannels = numel(labels);
 hdr.SenseChannelConfig.TDSampleRate = cellfun(@str2num,(regexp(hdr.SenseChannelConfig.TDSampleRate.toCharArray','\d+','match')));
 hdr.hemiFlag = hemisphere;
+
 
 % read
 data = importdata(fullfile(p,filesep,strcat(f,'.txt')));

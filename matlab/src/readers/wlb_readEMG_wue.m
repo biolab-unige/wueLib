@@ -27,21 +27,42 @@ fgetl(fid);
 hdr.freq = sscanf(fgetl(fid),'%*s%d');
 hdr.samples = sscanf(fgetl(fid),'%*s%d');
 fgetl(fid);
-stringS = fgetl(fid);
-labels  = regexp(regexprep(stringS,'\s','_'),',m[V|s]_','split');
-units	  = regexp(stringS,'m[V|s]','match');
+stringS = textscan(fgetl(fid),'%s','delimiter','\t');
+units	  = regexp(stringS{1},'m[V|s]','match');
+units(cellfun(@isempty,units)) = {'unk'};
+units = [units{:}];
+labels = stringS{1};
 
+miscPattern = [{'time'},{'artef.*'},{'digital'}];
+mask = cellfun(@(x)(regexp(x,miscPattern)),lower(labels),'Unif',false);
+mask = [mask{:}];
+mask(cellfun(@isempty,mask)) = {0};
+
+% labels x patterns
+mask = reshape(mask,[numel(miscPattern),numel(labels)])';
+mask = cell2mat(mask);
+mask = logical(sum(mask,2));
+
+labels(mask) = strcat(labels(mask),'_pulse');
+labels(~mask) = strcat(labels(~mask),'_emg');
+
+mask = strfind(lower(labels),'ekg');
+mask(cellfun(@isempty,mask)) = {0};
+mask = logical([mask{:}]);
+labels(mask) = {'EKG'};
+labels = regexprep(labels,',m[V|s]','');
+labels = regexprep(labels,'\s+','_');
 
 hdr.n_chan = numel(labels);
 hdr.units = units;
-hdr.labels = labels;
+hdr.labels = labels';
 
 % jump two lines to remove Calibr field which seems to be 
 % useless
 fgetl(fid);
 fgetl(fid);
 
-data = nan(hdr.samples,hdr.n_chan+1);
+data = nan(hdr.samples,hdr.n_chan);
 
 for lines=1:hdr.samples
 		data(lines,:) = sscanf(fgetl(fid),'%f')';
