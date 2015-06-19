@@ -9,8 +9,8 @@ function status = wlb_EMGPCSSynch(varargin)
 		p.addRequired('path_pcs',@ischar);
 		p.addRequired('outdir',@ischar);
 
-		p.addOptional('path_events',[],@ischar)
-		p.addOptional('fnameFilters',[],@iscell);
+		p.addOptional('path_events','',@ischar)
+		p.addOptional('fnameFilters',{''},@iscell);
 
 		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
@@ -117,7 +117,7 @@ function status = wlb_EMGPCSSynch(varargin)
 				% resampling
 				t0(2,:) = (round(t0(2,:)/emg_hdr.freq*pcs_fs));
 				t0 			= round(t0/pcs_fs*fs);
-							 
+					                
 				% also compute the sample indices fo each events with new sampling freq
 				for evIdx = 1:numel(eventsInfo)
 						eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)...
@@ -129,20 +129,25 @@ function status = wlb_EMGPCSSynch(varargin)
 
 				% t0 has start and end samples foreach channel
 				% cut data to have the same number of samples
-				onset  			= min(t0(:,1));
-				off 		 		= [1 -1;1 -1] * onset ;
-				data_wnd		= t0 - off;
-
-				pcs_data_out 	= pcs_data(:,1+data_wnd(1,1):...
-						min([data_wnd(1,2),length(pcs_data)]));
-
-				emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
-						min([data_wnd(2,2),length(emg_data)]));
+% 				onset  			= min(t0(:,1));
+% 				off 		 		= [1 -1;1 -1] * onset ;
+% 				data_wnd		= t0 - off;
+% 
+% 				pcs_data_out 	= pcs_data(:,1+data_wnd(1,1):...
+% 						min([data_wnd(1,2),length(pcs_data)]));
+% 
+% 				emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
+% 						min([data_wnd(2,2),length(emg_data)]));
+                
+                pcs_data_out 	= pcs_data(:,max(1,t0(1,1)-t0(2,1)):end);
+				emg_data_out 	= emg_data(:,max(1,t0(2,1)-t0(1,1)):end);
 				
-				final_size   	= min([size(pcs_data_out,2),....
-														size(emg_data_out,2)]);
-				data_out 	 		= [pcs_data_out(:,1:final_size);...
-												emg_data_out(:,1:final_size)];
+				final_size   	= min([t0(:,2)' size(pcs_data_out,2),size(emg_data_out,2)]);
+                                                    
+                pcs_data_out 	= pcs_data_out(:,1:final_size);
+				emg_data_out 	= emg_data_out(:,1:final_size);
+                                                    
+				data_out 	 		= [pcs_data_out;emg_data_out];
 				
 				pcs_channels	= size(pcs_data,1);
 				emg_channels  = size(emg_data,1);
@@ -169,6 +174,11 @@ function status = wlb_EMGPCSSynch(varargin)
 				end
 				drawnow
 				
+                figure(1000),clf
+                hold on
+                plot(pcs_data_out(pcs_ch_idx,:).*1e5)
+                plot(emg_data_out(emg_ch_idx,:),'r')
+                
 				% update header info
 				out_hdr.label 	= [pcs_hdr.labels';emg_hdr.labels'];
 				out_hdr.nChans 	= pcs_channels + emg_channels;

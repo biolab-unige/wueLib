@@ -7,12 +7,12 @@ function status = wlb_TENSSynch_main(varargin)
 
 %%% DEFINE INPUT STRUCTURE %%%
 p = inputParser;
-p.addParamValue('path_pcs',[],@ischar);
-p.addParamValue('path_emg',[],@ischar);
-p.addParamValue('path_hdeeg',[],@ischar);
+p.addParamValue('path_pcs','',@ischar);
+p.addParamValue('path_emg','',@ischar);
+p.addParamValue('path_hdeeg','',@ischar);
 p.addParamValue('path_events','',@ischar);
-p.addParamValue('fNameFilters',[],@iscell);
-p.addParamValue('outdir',[],@ischar);
+p.addParamValue('fNameFilters',{''},@iscell);
+p.addParamValue('outdir','',@ischar);
 
 p.parse(varargin{:});
 recordingModalities = cell(1,3);
