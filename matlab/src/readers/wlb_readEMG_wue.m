@@ -1,4 +1,4 @@
-function [hdr data]= wlb_readEMG_wue(filename)
+function [hdr, data]= wlb_readEMG_wue(filename)
 % wlb_readEMG_wue
 
 % Edited 2014-09-19 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
@@ -27,30 +27,26 @@ fgetl(fid);
 hdr.freq = sscanf(fgetl(fid),'%*s%d');
 hdr.samples = sscanf(fgetl(fid),'%*s%d');
 fgetl(fid);
-labels = textscan(fgetl(fid),'%s','delimiter','\t');
-labels = labels{1};
+stringS = fgetl(fid);
+labels  = regexp(regexprep(stringS,'\s','_'),',m[V|s]_','split');
+units	  = regexp(stringS,'m[V|s]','match');
 
-labels = regexp(labels,',','split');
 
 hdr.n_chan = numel(labels);
+hdr.units = units;
+hdr.labels = labels;
 
-for l = 1:hdr.n_chan
-		hdr.labels(l) = regexprep(labels{l}(1),' ','_');
-		if( numel(labels{l}) == 2)
-			hdr.units(l)  = labels{l}(2);
-		else
-			hdr.units(l)  = {'unk'};
-		end
-end
+% jump two lines to remove Calibr field which seems to be 
+% useless
 fgetl(fid);
 fgetl(fid);
 
-data = nan(hdr.samples,hdr.n_chan);
+data = nan(hdr.samples,hdr.n_chan+1);
 
 for lines=1:hdr.samples
 		data(lines,:) = sscanf(fgetl(fid),'%f')';
 end
 
-data = data';
+data = data(:,2:end)';
 fclose(fid);
 end
