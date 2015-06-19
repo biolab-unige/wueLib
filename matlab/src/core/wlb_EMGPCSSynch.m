@@ -90,13 +90,14 @@ function status = wlb_EMGPCSSynch(varargin)
 				data_cell = [{pcs_ch},{emg_ch}];
 				
 				t0 = cellfun(@find_t_init,data_cell,{pcs_locs,emg_locs},...
+						  {pcs_hdr.SenseChannelConfig.TDSampleRate,emg_hdr.freq},...
 							{method, method},'uni',false);
 
 				t0 = reshape([t0{:}],2,2)';
 					 
 				if( method == 2 )
 						% estimate the correct fs for PCS from EMG
-						pcs_fs = ((t0(1,2)-t0(1,1))* emg_hdr.freq) /(t0(2,2)-t0(2,1))
+						pcs_fs = ((t0(1,2)-t0(1,1))* emg_hdr.freq) /(t0(2,2)-t0(2,1));
 				else
 						% use default
 						t0(:,2) = [length(pcs_ch) length(emg_ch)];
@@ -230,10 +231,10 @@ function status = wlb_EMGPCSSynch(varargin)
   	status = 0;
 end % function
 
-function tau = find_t_init(D,locs,chunks)
-		%FIND_T_INIT Description
-		%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
-		%
+function tau = find_t_init(D,locs,fs,chunks)
+%FIND_T_INIT Description
+%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
+%
 
 		% number of levels used for WICA and wavelet family
 		num_lvl   = 8;
@@ -244,13 +245,16 @@ function tau = find_t_init(D,locs,chunks)
 
 		for chunk = 0:chunks-1
 				
-				artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
-				if((locs(2+2*chunk)+artefact_duration)<=length(D))
-						data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
-				else
-						data0 				= D(locs(1+2*chunk):end);
-				end
-				data 				= data0;
+%				artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
+%
+%				if((locs(2+2*chunk)+artefact_duration)<=length(D))
+%						data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
+%				else
+%						data0 				= D(locs(1+2*chunk):end);
+%				end
+				artefactIdx	= round(mean(locs([1,2]+(2*chunk)))) + [-2*fs:2*fs];
+				data 				= D(artefactIdx);
+				artefactDuration = max(artefactIdx)-min(artefactIdx);
 
 				nsamples    = length(data);
 				offset      = ceil(nsamples/(2^num_lvl)) * (2^num_lvl);
@@ -267,7 +271,7 @@ function tau = find_t_init(D,locs,chunks)
 				
 				out = iswt(swa,swd,vfilter)';
 				out = out(1:nsamples);
-				thresh = 2*std(abs(out((artefact_duration+1):end)));
+				thresh = 2*std(abs(out((artefactDuration+1):end)));
 				
 				out( abs(out) <  std(abs(out)) ) = 0;
 				
@@ -280,7 +284,7 @@ function tau = find_t_init(D,locs,chunks)
 				t = linspace(0,100,nsamples);
 				figure,
 				subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
-				subplot(2,1,2), plot(t,data0,t(data_locs),data0(data_locs),'rx');
+				subplot(2,1,2), plot(t,data(1:nsamples),t(data_locs),data(data_locs),'rx');
 
 				tau(chunk+1) = data_locs + locs(1+2*chunk)-1;
 		end
@@ -353,9 +357,15 @@ function fnames = filterFnames(fnames,pattern)
 %FILTERFNAMES Description
 %	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
 %
-		
 		tmp = {fnames.name};
-		mask = ~cellfun(@isempty,regexp(tmp,pattern));
+		mask= zeros(numel(tmp),numel(pattern));
+
+		for el = 1:numel(tmp)
+			mask(el,:) = ~cellfun(@isempty,regexp(tmp(el),pattern));
+		end
+
+		mask = logical(prod(mask,2));
+
 		fnames = fnames(mask);
 end
 
@@ -368,7 +378,7 @@ function bool = checkDataConsistency(fname_mod1, fname_mod2)
 		fname_mod2 = {fname_mod2.name};
 
 		[~,mod1,~] = cellfun(@fileparts,fname_mod1,'uni',false);
-		[~,mod2,~] 	= cellfun(@fileparts,fname_mod2,'uni',false);
+		[~,mod2,~] = cellfun(@fileparts,fname_mod2,'uni',false);
 
 		nMod1Files = numel(mod1);
 		nMod2Files = numel(mod2);
@@ -392,9 +402,9 @@ function newloc = findTENSArtefact(data,fs)
 		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
 		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
 		data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
-		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
+		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 0.5, 1,1,[]);
 
-    pctg = 99;
+    pctg = 90;
 		thr = prctile(data_bp,pctg);
 		while(thr<0)
 				pctg = pctg +1;
@@ -404,11 +414,11 @@ function newloc = findTENSArtefact(data,fs)
 		[pks,pks_locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
 		
     if(length(pks_locs)>2)
-				[val,I] = sort(pks,'descend');
-				thr = val(3)+2*eps;
-				pks = val(1:2);
-				pks_locs= pks_locs(I);
-				pks_locs=pks_locs(1:2);
+				[val,I] 	= sort(pks,'descend');
+				thr 			= val(3)+2*eps;
+				pks 			= val(1:2);
+				pks_locs	= pks_locs(I);
+				pks_locs	= pks_locs(1:2);
 		end
 
 		[locs] = find(abs(diff((data_bp>thr))));
@@ -432,5 +442,7 @@ function newloc = findTENSArtefact(data,fs)
 		else
 				newloc = locs;
 		end
-           
+          
+		newloc = sort(newloc,'ascend');
+
 end
