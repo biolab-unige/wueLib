@@ -220,10 +220,14 @@ function status = wlb_EMGPCSSynch(varargin)
 				filename = strcat(fname_pcs,'_emg');
 				
 				out_hdr.DataFile = strcat(filename,'.eeg');
-				out_hdr.MarkerFile = strcat(filename,'.vmrk');
-				
+				out_hdr.MarkerFile = '';
+                
 				write_brainvision_eeg(p.Results.outdir, out_hdr, data_out);
-				write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);
+                if(~isempty(eventsInfo))
+                    write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);	
+                    out_hdr.MarkerFile = strcat(filename,'.vmrk');
+                end
+                
 				write_brainvision_vhdr(p.Results.outdir, out_hdr);
 
 		end % for files
