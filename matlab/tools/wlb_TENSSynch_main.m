@@ -11,7 +11,7 @@ p.addParamValue('path_pcs',[],@ischar);
 p.addParamValue('path_emg',[],@ischar);
 p.addParamValue('path_hdeeg',[],@ischar);
 p.addParamValue('path_events','',@ischar);
-p.addParamValue('fNameFilters',[],@ischar);
+p.addParamValue('fNameFilters',[],@iscell);
 p.addParamValue('outdir',[],@ischar);
 
 p.parse(varargin{:});
@@ -43,7 +43,7 @@ if(isempty(p.Results.outdir))
 		for field = 1:numel(fieldNames)
 			nonEmptyField(field) = ~isempty(p.Results.(fieldNames{field}));
 		end; clear field;
-		[outdir, ~] = fileparts(p.Results.(fieldNames{find(nonEmptyField,1,'first')}));
+		outdir = p.Results.(fieldNames{find(nonEmptyField,1,'first')});
 else
     if(~exist(p.Results.outdir,'dir'))
         mkdir(p.Results.outdir);

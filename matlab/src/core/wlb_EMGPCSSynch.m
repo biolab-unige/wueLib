@@ -10,7 +10,7 @@ function status = wlb_EMGPCSSynch(varargin)
 		p.addRequired('outdir',@ischar);
 
 		p.addOptional('path_events',[],@ischar)
-		p.addOptional('fnameFilters',[],@ischar);
+		p.addOptional('fnameFilters',[],@iscell);
 
 		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
@@ -32,7 +32,7 @@ function status = wlb_EMGPCSSynch(varargin)
 		% check whether we have the same number of files 
 		assert(checkDataConsistency(pcsFileNames,emgFileNames));
 		
-		if ~isempty(fnameFilters)
+		if ~isempty(fnameFilters{1})
 				pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
 				emgFileNames = filterFnames(emgFileNames,fnameFilters);
 		end
@@ -95,8 +95,8 @@ function status = wlb_EMGPCSSynch(varargin)
 				t0 = reshape([t0{:}],2,2)';
 					 
 				if( method == 2 )
-						% estimate the correct fs for PCS
-						pcs_fs = (t0(2,2)-t0(2,1))* emg_hdr.Fs /(t0(1,2)-t0(1,1));
+						% estimate the correct fs for PCS from EMG
+						pcs_fs = ((t0(1,2)-t0(1,1))* emg_hdr.freq) /(t0(2,2)-t0(2,1))
 				else
 						% use default
 						t0(:,2) = [length(pcs_ch) length(emg_ch)];
@@ -106,7 +106,7 @@ function status = wlb_EMGPCSSynch(varargin)
 							pcs_fs = 422;
 						end
 				end
-					 
+					
 				% downsample pcs data to integer sampling frequency and eeg accordingly
 				fs 							= 400;
 				[pcs_data,~,~] 	= ResampleCascade(pcs_data,fs,pcs_fs);
@@ -206,7 +206,7 @@ function status = wlb_EMGPCSSynch(varargin)
 
 				% write data
 				[~, fname_pcs, ~] = fileparts(pcsFname);
-				filename = strcat(fname_pcs,'_EMG');
+				filename = strcat(fname_pcs,'_emg');
 				
 				out_hdr.DataFile = strcat(filename,'.eeg');
 				out_hdr.MarkerFile = strcat(filename,'.vmrk');
@@ -221,58 +221,59 @@ function status = wlb_EMGPCSSynch(varargin)
 end % function
 
 function tau = find_t_init(D,locs,chunks)
-%FIND_T_INIT Description
-%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
-%
+		%FIND_T_INIT Description
+		%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
+		%
 
-% number of levels used for WICA and wavelet family
-num_lvl   = 8;
-vfilter   = 'db1';
+		% number of levels used for WICA and wavelet family
+		num_lvl   = 8;
+		vfilter   = 'db1';
 
-% below we separate the portions containing the TENS artefacts
+		% below we separate the portions containing the TENS artefacts
+		tau = [0 0];
 
-tau = [0 0];
+		for chunk = 0:chunks-1
+				
+				artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
+				if((locs(2+2*chunk)+artefact_duration)<=length(D))
+						data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
+				else
+						data0 				= D(locs(1+2*chunk):end);
+				end
+				data 				= data0;
 
-for chunk = 0:chunks-1
-    
-    artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
-    if((locs(2+2*chunk)+artefact_duration)<=length(D))
-        data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
-    else
-        data0 				= D(locs(1+2*chunk):end);
-    end
-    data 				= data0;
+				nsamples    = length(data);
+				offset      = ceil(nsamples/(2^num_lvl)) * (2^num_lvl);
+				
+				data(nsamples+1:offset) = zeros(1,offset-nsamples);
+				
+				[thr, ~, ~] = ddencmp('den','wv',data);
+				
+				[swa, swd] = swt(data,num_lvl, vfilter);
 
-    nsamples    = length(data);
-    offset      = ceil(nsamples/(2^num_lvl)) * (2^num_lvl);
-    
-    data(nsamples+1:offset) = zeros(1,offset-nsamples);
-    
-    [thr, ~, ~] = ddencmp('den','wv',data);
-    
-    [swa, swd] = swt(data,num_lvl, vfilter);
+				swd(abs(swd) < thr) = 0;
+				swd(3:num_lvl,:) = zeros(size(swd(3:num_lvl,:)));
+				swa = zeros(size(swa));
+				
+				out = iswt(swa,swd,vfilter)';
+				out = out(1:nsamples);
+				thresh = 2*std(abs(out((artefact_duration+1):end)));
+				
+				out( abs(out) <  std(abs(out)) ) = 0;
+				
+				[~, max_locs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
+%				[~, min_locs] = findpeaks(-(out),'MINPEAKHEIGHT',thresh);  
 
-    swd(abs(swd) < thr) = 0;
-    swd(3:num_lvl,:) = zeros(size(swd(3:num_lvl,:)));
-    swa = zeros(size(swa));
-    
-    out = iswt(swa,swd,vfilter)';
-    out = out(1:nsamples);
-    thresh = 2*std(abs(out((artefact_duration+1):end)));
-    
-    out( abs(out) <  std(out) ) = 0;
-    
-    [~, max_locs] = findpeaks((out),'MINPEAKHEIGHT',thresh);
-    [~, min_locs] = findpeaks(-(out),'MINPEAKHEIGHT',thresh);  
+%				data_locs = max(max(max_locs),max(min_locs));
+				data_locs = max(max_locs);				
+			
+				t = linspace(0,100,nsamples);
+				figure,
+				subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
+				subplot(2,1,2), plot(t,data0,t(data_locs),data0(data_locs),'rx');
 
-    data_locs = max(max(max_locs),max(min_locs));
-    
-%     figure,
-%     subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
-%     subplot(2,1,2), plot(t,data0,t(data_locs),data0(data_locs),'rx');
-    
-    tau(chunk+1) = data_locs + locs(1+2*chunk)-1;
-end
+				tau(chunk+1) = data_locs + locs(1+2*chunk)-1;
+		end
 
 end
 
@@ -383,51 +384,43 @@ function newloc = findTENSArtefact(data,fs)
 		data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
 		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-        pctg = 90;
+    pctg = 99;
 		thr = prctile(data_bp,pctg);
-        while(thr<0)
-            pctg = pctg +1;
-            thr = prctile(data_bp,pctg);        
-        end
+		while(thr<0)
+				pctg = pctg +1;
+				thr = prctile(data_bp,pctg);        
+		end
         
 		[pks,pks_locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
 		
-        if(length(pks_locs)>2)
-				[val,~] = sort(pks,'descend');
+    if(length(pks_locs)>2)
+				[val,I] = sort(pks,'descend');
 				thr = val(3)+2*eps;
+				pks = val(1:2);
+				pks_locs= pks_locs(I);
+				pks_locs=pks_locs(1:2);
 		end
 
 		[locs] = find(abs(diff((data_bp>thr))));
-        
-        newloc = [];
-        
-        if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
-            for i=1:numel(pks)
-                loc = locs(find((locs-pks_locs(i))<5*fs)); %cerco le intersezioni piu vicine al picco
-                if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
-                    if(i==1)
-                        loc = [1 loc]; %hanno tagliato all'inizio
-                    else
-                        loc = [loc length(data_bp)];%hanno tagliato alla fine
-                    end
-                else
-                    loc = loc([1 end]); %intersezioni pari prendo le due piu esterne
-                end
-                newloc = [newloc loc];
-            end
-        else
-            newloc = locs;
-        end
+       
+		newloc = [];
+		
+		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+				for i=1:numel(pks)
+						loc = locs(find( abs(locs-pks_locs(i))<5*fs)); %cerco le intersezioni piu vicine al picco
+						if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
+								if(i==1)
+										loc = [1 loc]; %hanno tagliato all'inizio
+								else
+										loc = [loc length(data_bp)];%hanno tagliato alla fine
+								end
+						else
+								loc = loc([1 end]); %intersezioni pari prendo le due piu esterne
+						end
+						newloc = [newloc loc];
+				end
+		else
+				newloc = locs;
+		end
            
-% 		if(length(locs)==3)
-% 				start_end = find(diff(locs)>5*fs);
-% 				if (start_end == 1)
-% 						locs = [1 locs];
-% 				else
-% 						locs = locs(1:2);
-% 				end
-% 		end
-
-
-
 end
