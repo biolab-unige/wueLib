@@ -73,7 +73,13 @@ function status = wlb_EMGPCSSynch(varargin)
 
 				% pick the first channel
 				pcs_ch_idx = p.Results.pcsRefChannel;
-				emg_ch_idx = find(ismember(lower(emg_hdr.labels),'digital_pulse')==1);
+				emg_ch_idx = find(or(ismember(lower(emg_hdr.labels),'digital_pulse')==1,...
+													ismember(lower(emg_hdr.labels),'artefakt_pulse')==1 ),1,'last');
+
+				if isempty(pcs_ch_idx ) || isempty(emg_ch_idx)
+						status = -1;
+						error('Invalid reference channel');
+				end	
 
 				pcs_ch = pcs_data(pcs_ch_idx,:);
 				emg_ch = emg_data(emg_ch_idx,:);
@@ -163,7 +169,7 @@ function status = wlb_EMGPCSSynch(varargin)
 				out_hdr.chanunit = [pcs_hdr.chanUnits, emg_hdr.units];
 				
 				wnd_plot = -100:100;
-				figure(1), clf
+				figure(666), clf
 				subplot(211)
 				hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(1)).*1e5,'r');
 				plot(emg_data(emg_ch_idx,wnd_plot + t0(2)),'k');
@@ -224,8 +230,8 @@ function status = wlb_EMGPCSSynch(varargin)
                 
 				write_brainvision_eeg(p.Results.outdir, out_hdr, data_out);
                 if(~isempty(eventsInfo))
-                    write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);	
                     out_hdr.MarkerFile = strcat(filename,'.vmrk');
+                    write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);	
                 end
                 
 				write_brainvision_vhdr(p.Results.outdir, out_hdr);
@@ -257,6 +263,8 @@ function tau = find_t_init(D,locs,fs,chunks)
 %						data0 				= D(locs(1+2*chunk):end);
 %				end
 				artefactIdx	= round(mean(locs([1,2]+(2*chunk)))) + [-2*fs:2*fs];
+				artefactIdx(artefactIdx > numel(D)) = [];
+				artefactIdx(artefactIdx < 1) = [];
 				data 				= D(artefactIdx);
 				artefactDuration = max(artefactIdx)-min(artefactIdx);
 
@@ -275,7 +283,7 @@ function tau = find_t_init(D,locs,fs,chunks)
 				
 				out = iswt(swa,swd,vfilter)';
 				out = out(1:nsamples);
-				thresh = 2*std(abs(out((artefactDuration+1):end)));
+				thresh = 2*std(abs(out));
 				
 				out( abs(out) <  std(abs(out)) ) = 0;
 				
@@ -422,23 +430,43 @@ function newloc = findTENSArtefact(data,fs)
 		end
         
 		[pks,pks_locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
-		
+		tmpThr = mean(pks);%+2*std(pks);
+		pks_locs( pks < tmpThr) = [];
+		pks( pks < tmpThr) = [];
     if(length(pks_locs)>2)
-				[val,I] 	= sort(pks,'descend');
-				thr 			= val(3)+2*eps;
-				pks 			= val(1:2);
-				pks_locs	= pks_locs(I);
-				pks_locs	= pks_locs(1:2);
+				% in general we should have only two tens 
+				% but we might end up with some weird artefacts
+
+
+%				[val,I] = sort(pks,'descend');
+%				tmp_pks_locs = pks_locs(I);
+%				tmp_pks			 = val(1:3);
+				[x,y] = meshgrid(pks_locs);
+				pks_dist = (x-y);
+
+				[firstPeak, secondPeak] =	find(pks_dist == max(pks_dist(:)));
+				pks_locs = pks_locs([firstPeak,secondPeak]);
+				pks 		 = pks([firstPeak,secondPeak]);
+
+%				thr 			= val(3)*10;
+%				pks 			= val(1:2);
+%				pks_locs	= pks_locs(I);
+%				pks_locs	= pks_locs(1:2);
+
 		end
 
 		[locs] = find(abs(diff((data_bp>thr))));
        
 		newloc = [];
-		
-		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+
+		%ci sono piu di 2 intersezioni in uno o entrambi i picchi
+		if(length(locs)/numel(pks)~=2) 				
 				for i=1:numel(pks)
-						loc = locs(find( abs(locs-pks_locs(i))<5*fs)); %cerco le intersezioni piu vicine al picco
-						if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
+					%cerco le intersezioni piu vicine al picco
+						loc = locs(find( abs(locs-pks_locs(i))<5*fs));
+
+						%intersezioni dispari quindi hanno tagliato il tens
+						if(mod(numel(loc),2)~=0)    							
 								if(i==1)
 										loc = [1 loc]; %hanno tagliato all'inizio
 								else
