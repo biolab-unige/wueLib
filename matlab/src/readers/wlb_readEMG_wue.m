@@ -53,21 +53,31 @@ labels(mask) = {'EKG'};
 labels = regexprep(labels,',m[V|s]','');
 labels = regexprep(labels,'\s+','_');
 
-hdr.n_chan = numel(labels);
-hdr.units = units;
-hdr.labels = labels';
 
 % jump two lines to remove Calibr field which seems to be 
 % useless
 fgetl(fid);
 fgetl(fid);
 
-data = nan(hdr.samples,hdr.n_chan);
+data = nan(hdr.samples,numel(labels));
 
 for lines=1:hdr.samples
 		data(lines,:) = sscanf(fgetl(fid),'%f')';
 end
 
-data = data(:,2:end)';
+data = data';
 fclose(fid);
+
+channelZeros = find(mean(data,2)==0);
+data( channelZeros,:) = [];
+
+% for some weird reasons we mihgt end up with an empyt
+% labels due to random white spaces in the line
+labels(channelZeros) = [];
+units(channelZeros) = [];
+
+hdr.n_chan = numel(labels);
+hdr.units = units;
+hdr.labels = labels';
+
 end
