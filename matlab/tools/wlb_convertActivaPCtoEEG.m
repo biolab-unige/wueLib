@@ -1,17 +1,26 @@
-function wlb_convertActivaPCtoEEG(folder)
+function wlb_convertActivaPCtoEEG(folder,logFid)
 %WLB_CONVERTACTIVAPCTOEEG Append to a single BrainAmp file all the PC+s data
 %	WLB_CONVERTACTIVAPCTOEEG(FOLDER) 
 %
 
-		fnames = dir(fullfile(folder,'*xml'));
 
+		fprintf(logFid,'Reading in %s\n',folder);
+		fprintf('Reading in %s\n',folder);
+		fnames = dir(fullfile(folder,'*xml'));
+		
 		dataOut = cell(numel(fnames),1);
 		labels  = cell(numel(fnames),1);
 
 		for file = 1:numel(fnames)
-				[hdr, data] 	= wlb_readActivaPC(fullfile(folder,fnames(file).name));
+				try
+					[hdr, data]	= wlb_readActivaPC(fullfile(folder,fnames(file).name));
+				catch ME
+						fprintf(logFid,ME.message);
+						continue
+				end
 
-				durSeconds(file)  	= sum(str2double(regexp(char(hdr.RecordingDuration),':','split')).*[3600,60,1]);
+				durSeconds(file)  	= sum(str2double(regexp(char(...
+						hdr.RecordingDuration),':','split')).*[3600,60,1]);
 				fs(file)						= hdr.SenseChannelConfig.TDSampleRate;
 				labels(file)				= {hdr.labels};
 				dataOut(file)				= {data'};
@@ -22,7 +31,6 @@ function wlb_convertActivaPCtoEEG(folder)
 		if numel(realFs) > 1
 				error(' Inconsistent sampling frequency between selected files\n');
 		end
-
 
 		clear file hdr data;
 
@@ -58,12 +66,14 @@ function wlb_convertActivaPCtoEEG(folder)
 		stripPaths = regexp(folder,'/orig/','split');
 
 		filename = regexprep(stripPaths{2},'/','_');
+
+
 		
 		out_hdr.DataFile = strcat(filename,'.eeg');
 		out_hdr.MarkerFile = '';
+		fprintf(logFid,'Writing to %s\n',filename);
 						
 		write_brainvision_eeg(folder, out_hdr, data);
-						
 		write_brainvision_vhdr(folder, out_hdr);
 
 
