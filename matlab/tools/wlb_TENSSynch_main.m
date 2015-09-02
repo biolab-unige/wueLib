@@ -13,6 +13,8 @@ p.addParamValue('path_hdeeg','',@ischar);
 p.addParamValue('path_events','',@ischar);
 p.addParamValue('fNameFilters',{''},@iscell);
 p.addParamValue('outdir','',@ischar);
+p.addOptional('pcsCuttingTime',0,@isnumeric);
+p.addOptional('emgCuttingTime',0,@isnumeric);
 
 p.parse(varargin{:});
 recordingModalities = cell(1,3);
@@ -28,6 +30,14 @@ end
 if ~isempty(p.Results.path_pcs) 
 		path_pcs = p.Results.path_pcs; 
 		recordingModalities{3} = 'pcs';	
+end
+
+if ~isempty(p.Results.pcsCuttingTime)
+    pcsCuttingTime = p.Results.pcsCuttingTime;
+end
+
+if ~isempty(p.Results.emgCuttingTime)
+    emgCuttingTime = p.Results.emgCuttingTime;
 end
 
 path_events = p.Results.path_events;
@@ -60,7 +70,8 @@ switch recordingModalities
 		case 'eeg_emg_pcs'
 				status = wlb_EEGEMGPCSSynch(path_hdeeg,path_emg,path_pcs);
 		case 'emg_pcs'
-				status = wlb_EMGPCSSynch(path_emg,path_pcs,outdir,path_events,fnameFilters);
+				status = wlb_EMGPCSSynch(path_emg,path_pcs,outdir,path_events,...
+                    fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime);
 		case 'eeg_pcs'
 				status = wlb_EEGPCSSynch(path_hdeeg,path_pcs);
 		otherwise

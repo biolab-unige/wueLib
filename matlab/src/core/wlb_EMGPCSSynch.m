@@ -5,6 +5,7 @@ function status = wlb_EMGPCSSynch(varargin)
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 		
 		p = inputParser;
+        p.PartialMatching = 0;
 		p.addRequired('path_emg',@ischar);
 		p.addRequired('path_pcs',@ischar);
 		p.addRequired('outdir',@ischar);
@@ -73,9 +74,9 @@ function status = wlb_EMGPCSSynch(varargin)
 				emg_data = emg_data(:,(p.Results.emgCuttingTime*emg_hdr.freq)+1:end);
 
 				% pick the first channel
-				pcs_ch_idx = p.Results.pcsRefChannel;
-				emg_ch_idx = find(or(ismember(lower(emg_hdr.labels),'digital_pulse')==1,...
-													ismember(lower(emg_hdr.labels),'artefakt_pulse')==1 ),1,'last');
+				pcs_ch_idx = 2%p.Results.pcsRefChannel;
+				emg_ch_idx = find(ismember(lower(emg_hdr.labels),{'digital_pulse',...
+                    'artefakt_pulse','tens_pulse'})==1,1,'last');
 
 				if isempty(pcs_ch_idx ) || isempty(emg_ch_idx)
 						status = -1;
@@ -196,7 +197,7 @@ function status = wlb_EMGPCSSynch(varargin)
 				end
 				drawnow
 				
-                figure(1000),clf
+                figure(2000),clf
                 hold on
                 plot(pcs_data_out(pcs_ch_idx,:).*1e4)
                 plot(emg_data_out(emg_ch_idx,:),'r')
@@ -248,7 +249,8 @@ function status = wlb_EMGPCSSynch(varargin)
                 
 				write_brainvision_vhdr(p.Results.outdir, out_hdr);
 
-                catch 
+                catch ME
+                    fprintf('%s\n',ME.message);
                     continue;
                 end
 		end % for files
@@ -433,15 +435,16 @@ function newloc = findTENSArtefact(data,fs)
 		data = abs(data);
 
 		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
-		if fs > 700
-
-			data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
+		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
+        
+        if fs > 700			
+            
 			data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
 			
 		end
 		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-    pctg = 90;
+    pctg = 80;
 		thr = prctile(data_bp,pctg);
 		while(thr<0)
 				pctg = pctg +1;
@@ -476,25 +479,37 @@ function newloc = findTENSArtefact(data,fs)
 		end
 
 		[locs] = find(abs(diff((data_bp>thr))));
+        data_bp_der = -savitzkyGolayFilt(data_bp,4,1,11);
+        locs_der = data_bp_der(locs);
+        
+        if(locs_der(1)<0),locs(1)=[];locs_der(1)=[];end
+        if(locs_der(end)>0),locs(end)=[];locs_der(end)=[];end
        
+        locs = reshape(locs,2,numel(locs)/2);
+        
+        duration = diff(locs);
+        
+        locs = locs(:,duration>1.5*fs);
+%         newloc = locs(:)';
+        
 		newloc = [];
 		
 % 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
 				for i=1:numel(pks)
-                    if(pks(i)>0.25*max(data_bp))
+%                     if(pks(i)>0.25*max(data_bp))
 						loc = locs(find( abs(locs-pks_locs(i))<5*fs)); %cerco le intersezioni piu vicine al picco
 						start_loc = find(loc-pks_locs(i)<0,1,'first');
                         end_loc = find(loc-pks_locs(i)>0,1,'last');
                         loc = [loc(start_loc) loc(end_loc)];
-                        if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
-								if(isempty(start_loc))
-										loc = [1 loc]; %hanno tagliato all'inizio
-								else
-										loc = [loc length(data_bp)];%hanno tagliato alla fine
-								end
-						end
+%                         if(mod(numel(loc),2)~=0)    %intersezioni dispari quindi hanno tagliato il tens
+% 								if(isempty(start_loc))
+% 										loc = [1 loc]; %hanno tagliato all'inizio
+% 								else
+% 										loc = [loc length(data_bp)];%hanno tagliato alla fine
+% 								end
+% 						end
 						newloc = [newloc loc];
-                    end
+%                     end
 				end
 % 		else
 % 				newloc = locs;

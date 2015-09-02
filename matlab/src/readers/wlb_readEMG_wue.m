@@ -33,7 +33,7 @@ units(cellfun(@isempty,units)) = {'unk'};
 units = [units{:}];
 labels = stringS{1};
 
-miscPattern = [{'time'},{'artef.*'},{'digital'}];
+miscPattern = [{'time'},{'artef.*'},{'digital'},{'tens'}];
 mask = cellfun(@(x)(regexp(x,miscPattern)),lower(labels),'Unif',false);
 mask = [mask{:}];
 mask(cellfun(@isempty,mask)) = {0};
