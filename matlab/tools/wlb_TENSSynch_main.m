@@ -1,6 +1,8 @@
 function status = wlb_TENSSynch_main(varargin)
 %BN_TENSSYNCH_MAIN Main interface for synchrnization wue data
 %	FLAG = BN_TENSSYNCH_MAIN(VARARGIN) 
+%	USAGE:
+%		
 
 
 % Edited 2014-09-22 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
@@ -15,6 +17,7 @@ p.addParamValue('fNameFilters',{''},@iscell);
 p.addParamValue('outdir','',@ischar);
 p.addOptional('pcsCuttingTime',0,@isnumeric);
 p.addOptional('emgCuttingTime',0,@isnumeric);
+
 
 p.parse(varargin{:});
 recordingModalities = cell(1,3);
@@ -56,7 +59,7 @@ if(isempty(p.Results.outdir))
 		outdir = p.Results.(fieldNames{find(nonEmptyField,1,'first')});
 else
     if(~exist(p.Results.outdir,'dir'))
-        mkdir(p.Results.outdir);
+       mkdir(p.Results.outdir);
     end
 		outdir = p.Results.outdir;
 end
@@ -77,5 +80,4 @@ switch recordingModalities
 		otherwise
 				status = -1;
 				error('Unsupported modality');
-
 end
