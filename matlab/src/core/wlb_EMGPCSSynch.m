@@ -1,33 +1,33 @@
 function status = wlb_EMGPCSSynch(varargin)
-%WLB_TENSSYNCH synchronize multiple files in the same vhdr/eeg file
-%	FLAG = WLB_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
+%WLBTENSSYNCH synchronize multiple files in the same vhdr/eeg file
+%	FLAG = WLBTENSSYNCH(VARARGIN) I'll edit it when it will be ready
 
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
-		
 		p = inputParser;
-		p.addRequired('path_emg',@ischar);
-		p.addRequired('path_pcs',@ischar);
+		p.addRequired('pathEmg',@ischar);
+		p.addRequired('pathPcs',@ischar);
 		p.addRequired('outdir',@ischar);
 
-		p.addOptional('path_events','',@ischar)
+		p.addOptional('pathEvents','',@ischar)
 		p.addOptional('fnameFilters',{''},@iscell);
 
 		p.addOptional('pcsRefChannel',2,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('emgCuttingTime',0,@isnumeric);
+		p.addOptional('automaticDetection',true,@islogical);
 
 		p.parse(varargin{:});
 
-		path_pcs = p.Results.path_pcs;
-		path_emg = p.Results.path_emg;
-		path_events = p.Results.path_events;
+		pathPcs = p.Results.pathPcs;
+		pathEmg = p.Results.pathEmg;
+		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fnameFilters;
 
 		% get filenames within each path
-		pcsFileNames = dir(fullfile(path_pcs,'*pcs.xml'));
-		emgFileNames = dir(fullfile(path_emg,'*emg.txt'));
+		pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
+		emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
 
-		eveFileNames = dir(fullfile(path_events,'*event*.csv'));
+		eveFileNames = dir(fullfile(pathEvents,'*event*.csv'));
 
 		% check whether we have the same number of files 
 		assert(checkDataConsistency(pcsFileNames,emgFileNames));
@@ -37,13 +37,14 @@ function status = wlb_EMGPCSSynch(varargin)
 				emgFileNames = filterFnames(emgFileNames,fnameFilters);
 		end
 
+
 		for fileIdx = 1 : numel(pcsFileNames)
 
-				pcsFname = fullfile(path_pcs,pcsFileNames(fileIdx).name);
-				emgFname = fullfile(path_emg,emgFileNames(fileIdx).name);
+				pcsFname = fullfile(pathPcs,pcsFileNames(fileIdx).name);
+				emgFname = fullfile(pathEmg,emgFileNames(fileIdx).name);
 
 				% files has been renamed to match 
-				% subject_studyName_drug_trial##_modality.**
+				% subjectStudyNameDrugTrial##Modality.**
 				drugCondition = regexp(pcsFname,'_','split');
 
 				% pick drug string
@@ -52,87 +53,89 @@ function status = wlb_EMGPCSSynch(varargin)
 				trialIdx = cell2mat(regexp(pcsFname,'trial\d+','match'));
 				trialIdx = str2double(cell2mat(regexp(trialIdx,'\d+','match')));
 				eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
-				eveFname = fullfile(path_events,eveFname.name);
+				eveFname = fullfile(pathEvents,eveFname.name);
 				tensFname= regexprep(eveFname,'events','tens');
 
 				fprintf('Synch:\t%s\n\t%s\n\t%s\n',pcsFname,emgFname,tensFname);
 
 				eventsInfo = [];
-				if ~isempty(p.Results.path_events)
+				if ~isempty(p.Results.pathEvents)
 					eventsInfo = wlb_readExternalEventFile( eveFname, trialIdx );
 				end
 
 				try
 						% read pcs header file
-						[pcs_hdr, pcs_data] = wlb_readActivaPC( pcsFname );
-						[emg_hdr, emg_data] = wlb_readEMG_wue( emgFname );
+						[pcsHdr, pcsData] = wlb_readActivaPC( pcsFname );
+						[emgHdr, emgData] = wlb_readEMG_wue( emgFname );
 					 
 						% cut data if needed
-						pcs_data = pcs_data(:,(p.Results.pcsCuttingTime*...
-								pcs_hdr.SenseChannelConfig.TDSampleRate)+1:end);
-						emg_data = emg_data(:,(p.Results.emgCuttingTime*emg_hdr.freq)+1:end);
+						pcsData = pcsData(:,(p.Results.pcsCuttingTime*...
+								pcsHdr.SenseChannelConfig.TDSampleRate)+1:end);
+						emgData = emgData(:,(p.Results.emgCuttingTime*emgHdr.freq)+1:end);
 
 						% pick the first channel
-						pcs_ch_idx = p.Results.pcsRefChannel;
-						emg_ch_idx = find(ismember(lower(emg_hdr.labels),'artefakt_pulse')==1 );
+						pcsChIdx = p.Results.pcsRefChannel;
+						emgChIdx = find(ismember(lower(emgHdr.labels),{'artefakt_pulse','tens_pulse'})==1 );
 
-						if isempty(pcs_ch_idx ) || isempty(emg_ch_idx)
-								status = -1;
+						if isempty(pcsChIdx ) || isempty(emgChIdx)
 								error('Invalid reference channel');
 						end	
 
-						pcs_ch = pcs_data(pcs_ch_idx,:);
-						emg_ch = emg_data(emg_ch_idx,:);
+						pcsCh = pcsData(pcsChIdx,:);
+						emgCh = emgData(emgChIdx,:);
 	
 						figure(1000),clf
 						hold on
-						plot(pcs_ch.*1e4)
-						plot(emg_ch,'r')
+						plot(pcsCh.*1e4)
+						plot(emgCh,'r')
 						title('original data');
 						legend([{'pcs'},{'emg'}])
 
 										
 						% search for the TENS artefact 
-						pcs_locs = findTENSArtefact(pcs_data(pcs_ch_idx,:),pcs_hdr.SenseChannelConfig.TDSampleRate);
-						emg_locs = findTENSArtefact(emg_data(emg_ch_idx,:),emg_hdr.freq);
+						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate);
+						emgLocs = findTENSArtefact(emgData(emgChIdx,:),emgHdr.freq);
 
-						method = min([length(pcs_locs)/2,length(emg_locs)/2]);
-						pcs_locs = pcs_locs(1:method*2);
-						emg_locs = emg_locs(1:method*2);
+						method = min([length(pcsLocs)/2,length(emgLocs)/2]);
+						pcsLocs = pcsLocs(1:method*2);
+						emgLocs = emgLocs(1:method*2);
 						
 						% actually compute t0 for all channels
-						data_cell = [{pcs_ch},{emg_ch}];
-						
-						t0 = cellfun(@find_t_init,data_cell,{pcs_locs,emg_locs},...
-									{pcs_hdr.SenseChannelConfig.TDSampleRate,emg_hdr.freq},...
-									{method, method},'uni',false);
+						dataCell = [{pcsCh},{emgCh}];
+						if p.Results.automaticDetection	
+								t0 = cellfun(@findTInit,dataCell,{pcsLocs,emgLocs},...
+											{pcsHdr.SenseChannelConfig.TDSampleRate,emgHdr.freq},...
+											{method, method},'uni',false);
+						else
+								t0 = cellfun(@manualTENS,dataCell,{method,method},'uni',false);
+						end
 							 
 						if( method == 2 )				
 												
    							t0 = reshape([t0{:}],2,2)';
 								% estimate the correct fs for PCS from EMG
-								pcs_fs = ((t0(1,2)-t0(1,1))* emg_hdr.freq) /(t0(2,2)-t0(2,1));
+								pcsFs = ((t0(1,2)-t0(1,1))* emgHdr.freq) /(t0(2,2)-t0(2,1));
 						else
 								t0 = [t0{:}]';
 								% use default
-								t0(:,2) = [length(pcs_ch) length(emg_ch)];
-								if pcs_hdr.SenseChannelConfig.TDSampleRate > 422
-									pcs_fs = 793.65;
+								t0(:,2) = [length(pcsCh) length(emgCh)];
+								if pcsHdr.SenseChannelConfig.TDSampleRate > 422
+									pcsFs = 793.65;
 								else
-									pcs_fs = 422;
+									pcsFs = 422;
 								end
 						end
 							
 						% downsample pcs data to integer sampling frequency and eeg accordingly
 						fs 							= 400;
-						[pcs_data,~,~] 	= ResampleCascade(pcs_data,fs,pcs_fs);
-						emg_data 				= resample(emg_data',fs,emg_hdr.freq)';
+						[pcsData,~,~] 	= ResampleCascade(pcsData,fs,pcsFs);
+						emgData 				= resample(emgData',fs,emgHdr.freq)';
 						
 						% each t0 row represent eeg,pcs,emg data before
 						% we have to recompute the exact point in time after
 						% resampling
-						t0(2,:) = (round(t0(2,:)/emg_hdr.freq*pcs_fs));
-						t0 			= round(t0/pcs_fs*fs);
+						t0(2,:) = (round(t0(2,:)/emgHdr.freq*pcsFs));
+						t0 			= round(t0/pcsFs*fs);
 															
 						% also compute the sample indices fo each events with new sampling freq
 						for evIdx = 1:numel(eventsInfo)
@@ -150,111 +153,100 @@ function status = wlb_EMGPCSSynch(varargin)
 
 						% t0 has start and end samples foreach channel
 						% cut data to have the same number of samples
-		% 				onset  			= min(t0(:,1));
-		% 				off 		 		= [1 -1;1 -1] * onset ;
-		% 				data_wnd		= t0 - off;
-		% 
-		% 				pcs_data_out 	= pcs_data(:,1+data_wnd(1,1):...
-		% 						min([data_wnd(1,2),length(pcs_data)]));
-		% 
-		% 				emg_data_out 	= emg_data(:,1+data_wnd(2,1):...
-		% 						min([data_wnd(2,2),length(emg_data)]));
-										
-						pcs_data_out 	= pcs_data(:,max(1,t0(1,1)-t0(2,1)):end);
-						emg_data_out 	= emg_data(:,max(1,t0(2,1)-t0(1,1)):end);
+						pcsDataOut 	= pcsData(:,max(1,t0(1,1)-t0(2,1)):end);
+						emgDataOut 	= emgData(:,max(1,t0(2,1)-t0(1,1)):end);
 						
-		% 				final_size   	= min([t0(:,2)' size(pcs_data_out,2),size(emg_data_out,2)]);
-						final_size   	= min([size(pcs_data_out,2),size(emg_data_out,2)]);
+						finalSize   	= min([size(pcsDataOut,2),size(emgDataOut,2)]);
 																												
-						pcs_data_out 	= pcs_data_out(:,1:final_size);
-						emg_data_out 	= emg_data_out(:,1:final_size);
+						pcsDataOut 	= pcsDataOut(:,1:finalSize);
+						emgDataOut 	= emgDataOut(:,1:finalSize);
 																												
-						data_out 	 		= [pcs_data_out;emg_data_out];
+						dataOut 	 		= [pcsDataOut;emgDataOut];
 						
-						pcs_channels	= size(pcs_data,1);
-						emg_channels  = size(emg_data,1);
+						pcsChannels	= size(pcsData,1);
+						emgChannels  = size(emgData,1);
 						
-						if(pcs_channels == 1)
-								data_out  = [data_out; zeros(1,size(data_out,2))];
-								pcs_channels = 2;
+						if(pcsChannels == 1)
+								dataOut  = [dataOut; zeros(1,size(dataOut,2))];
+								pcsChannels = 2;
 						end
 						
-						pcs_hdr.labels(end+1) 	= {'none'};
-						pcs_hdr.chanUnits(pcs_channels) = {'mV'};
-						out_hdr.chanunit = [pcs_hdr.chanUnits, emg_hdr.units];
+						pcsHdr.labels(end+1) 	= {'none'};
+						pcsHdr.chanUnits(pcsChannels) = {'mV'};
+						outHdr.chanunit = [pcsHdr.chanUnits, emgHdr.units];
 						
-						wnd_plot = -100:100;
+						wndPlot = -100:100;
 						figure(666), clf
 						subplot(211)
-						hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(1)).*1e4,'r');
-						plot(emg_data(emg_ch_idx,wnd_plot + t0(2)),'k');
+						hold on, plot(pcsData(pcsChIdx,wndPlot + t0(1)).*1e4,'r');
+						plot(emgData(emgChIdx,wndPlot + t0(2)),'k');
 						legend([{'pcs'},{'emg'}])
 
 						if(method == 2)
 								subplot(212)
-								hold on, plot(pcs_data(pcs_ch_idx,wnd_plot + t0(3)).*1e4,'r');
-								plot(emg_data(emg_ch_idx,wnd_plot+ t0(4)),'k');
+								hold on, plot(pcsData(pcsChIdx,wndPlot + t0(3)).*1e4,'r');
+								plot(emgData(emgChIdx,wndPlot+ t0(4)),'k');
 						end
 						drawnow
 						
 						figure(999),clf
 						hold on
-						plot(pcs_data_out(pcs_ch_idx,:).*1e4)
-						plot(emg_data_out(emg_ch_idx,:),'r')
+						plot(pcsDataOut(pcsChIdx,:).*1e4)
+						plot(emgDataOut(emgChIdx,:),'r')
 						title('data synched');
 						legend([{'pcs'},{'emg'}])
 						
-						pcs_hdr.labels = pcs_hdr.labels([1,2]);
-						pcs_hdr.chanUnits = pcs_hdr.chanUnits([1,2]);
-						pcs_channels = 2;
+						pcsHdr.labels = pcsHdr.labels([1,2]);
+						pcsHdr.chanUnits = pcsHdr.chanUnits([1,2]);
+						pcsChannels = 2;
 										
 						% update header info
-						out_hdr.label 	= [pcs_hdr.labels';emg_hdr.labels'];
-						out_hdr.nChans 	= pcs_channels + emg_channels;
-						out_hdr.NumberOfChannels = out_hdr.nChans;
-						out_hdr.Fs			= fs;
-						out_hdr.chanunit(out_hdr.nChans) = {'mV'};
+						outHdr.label 	= [pcsHdr.labels';emgHdr.labels'];
+						outHdr.nChans 	= pcsChannels + emgChannels;
+						outHdr.NumberOfChannels = outHdr.nChans;
+						outHdr.Fs			= fs;
+						outHdr.chanunit(outHdr.nChans) = {'mV'};
 
-						stn_pos_struct = struct('type','stn',...
-										'labels',pcs_hdr.labels,...
+						stnPosStruct = struct('type','stn',...
+										'labels',pcsHdr.labels,...
 										'sph_theta_besa',-134,...
 										'sph_phi_besa',-45);
 
 
-						emg_pos_struct = struct('type','emg',...
-										'labels',emg_hdr.labels,...
+						emgPosStruct = struct('type','emg',...
+										'labels',emgHdr.labels,...
 										'sph_theta_besa',-134,...
 										'sph_phi_besa',-45);
 						
-						out_hdr.layout.pos = [stn_pos_struct, emg_pos_struct];
-						out_hdr.chantype(out_hdr.nChans) = {'other'};
+						outHdr.layout.pos = [stnPosStruct, emgPosStruct];
+						outHdr.chantype(outHdr.nChans) = {'other'};
 						
 						% this is the only supported data format
-						out_hdr.DataFormat      = 'BINARY';
-						out_hdr.DataOrientation = 'MULTIPLEXED';
-						out_hdr.BinaryFormat    = 'IEEE_FLOAT_32';
+						outHdr.DataFormat      = 'BINARY';
+						outHdr.DataOrientation = 'MULTIPLEXED';
+						outHdr.BinaryFormat    = 'IEEEFLOAT32';
 
 						% no additional calibration needed, since float32
-						out_hdr.resolution      = ones(size(out_hdr.label));      
+						outHdr.resolution      = ones(size(outHdr.label));      
 
 				catch ME
 						fprintf('%s\n',ME.message);
 						continue;
 				end
 				% write data
-				[~, fname_pcs, ~] = fileparts(pcsFname);
-				filename = strcat(fname_pcs,'_emg');
+				[~, fnamePcs, ~] = fileparts(pcsFname);
+				filename = strcat(fnamePcs,'Emg');
 				
-				out_hdr.DataFile = strcat(filename,'.eeg');
-				out_hdr.MarkerFile = '';
+				outHdr.DataFile = strcat(filename,'.eeg');
+				outHdr.MarkerFile = '';
 								
-				write_brainvision_eeg(p.Results.outdir, out_hdr, data_out);
+				write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
 								if(~isempty(eventsInfo))
-										out_hdr.MarkerFile = strcat(filename,'.vmrk');
-										write_brainvision_vmrk(p.Results.outdir, out_hdr, eventsInfo);	
+										outHdr.MarkerFile = strcat(filename,'.vmrk');
+										write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);	
 								end
 								
-				write_brainvision_vhdr(p.Results.outdir, out_hdr);
+				write_brainvision_vhdr(p.Results.outdir, outHdr);
 
 					
 		end % for files
@@ -262,48 +254,37 @@ function status = wlb_EMGPCSSynch(varargin)
   	status = 0;
 end % function
 
-function tau = find_t_init(D,locs,fs,chunks)
-%FIND_T_INIT Description
-%	TAU = FIND_T_INIT(D,LOCS,CHUNKS) Long description
+function tau = findTInit(D,locs,~,chunks)
+%FINDTINIT Description
+%	TAU = FINDTINIT(D,LOCS,CHUNKS) Long description
 %
 
 		% number of levels used for WICA and wavelet family
-		num_lvl   = 8;
+		numLvl    = 8;
 		vfilter   = 'db1';
+		tau 			= nan(2,1);
 
-		% below we separate the portions containing the TENS artefacts
 
 		for chunk = 0:chunks-1
 				
-%				artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
-%
-%				if((locs(2+2*chunk)+artefact_duration)<=length(D))
-%						data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
-%				else
-%						data0 				= D(locs(1+2*chunk):end);
-%				end
-				
 				artefactIdx	= round(locs(1+(2*chunk))):round(locs(2+(2*chunk))) ;
-%                 artefactIdx	= round(locs([1,2]+(2*chunk)))) + [-2*fs:2*fs];
 
 				artefactIdx(artefactIdx > numel(D)) = [];
 				artefactIdx(artefactIdx < 1) = [];
 				data 				= D(artefactIdx);
-%				artefactDuration = max(artefactIdx)-min(artefactIdx);
 
 				nsamples    = length(data);
-				offset      = ceil(nsamples/(2^num_lvl)) * (2^num_lvl);
+				offset      = ceil(nsamples/(2^numLvl)) * (2^numLvl);
 				
 				data(nsamples+1:offset) = zeros(1,offset-nsamples);
 						
-%       data = wlb_bandpass_fft(data, fs, 50, fs/3,1,1,[]);
 
 				[thr] = 0.5*ddencmp('den','wv',data);
 				
-				[swa, swd] = swt(data,num_lvl, vfilter);
+				[swa, swd] = swt(data,numLvl, vfilter);
 
 				swd(abs(swd) < thr) = 0;
-				swd(3:num_lvl,:) = zeros(size(swd(3:num_lvl,:)));
+				swd(3:numLvl,:) = zeros(size(swd(3:numLvl,:)));
 				swa = zeros(size(swa));
 				
 				out = iswt(swa,swd,vfilter)';
@@ -312,19 +293,13 @@ function tau = find_t_init(D,locs,fs,chunks)
 				
 				out( abs(out) <  std(abs(out)) ) = 0;
 				
-				[~, max_locs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
-%				[~, min_locs] = findpeaks(-(out),'MINPEAKHEIGHT',thresh);  
-%				data_locs = max(max(max_locs),max(min_locs));
-				data_locs = max(max_locs);				
+				[~, maxLocs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
+				dataLocs = max(maxLocs);				
 			
-				tau(chunk+1) = data_locs + artefactIdx(1)-1;
-
-% 				figure,
-%					t = linspace(0,100,nsamples);
-% 				subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
-% 				subplot(2,1,2), plot(t,data(1:nsamples),t(data_locs),data(data_locs),'rx');
+				tau(chunk+1) = dataLocs + artefactIdx(1)-1;
 
 		end
+		tau(isnan(tau)) = [];
 		figure,
 		plot(D) , hold on, plot(tau,D(tau),'rx');
 
@@ -372,18 +347,18 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
         % Decimate/interp inputs cannot be vectorized
         case 'decimate'
             % Initialize output parameters
-            len_resmp = ceil(size(x,2) * prod(Pfac) / prod(Qfac));
+            lenResmp = ceil(size(x,2) * prod(Pfac) / prod(Qfac));
             nRow = size(x,1);
-            x_resmp = zeros(nRow, len_resmp);
+            xResmp = zeros(nRow, lenResmp);
             % Loop on factors and rows
             for iRow = 1:size(x,1)
-                x_tmp = x(iRow,:);
+                xTmp = x(iRow,:);
                 for i = 1:iFacs
-                    x_tmp = decimate(interp(x_tmp, Pfac(i)), Qfac(i));
+                    xTmp = decimate(interp(xTmp, Pfac(i)), Qfac(i));
                 end
-                x_resmp(iRow,:) = x_tmp;
+                xResmp(iRow,:) = xTmp;
             end
-            x = x_resmp;
+            x = xResmp;
         % Resample takes vectorized inputs
         case 'resample'
             for i = 1:iFacs
@@ -408,16 +383,16 @@ function fnames = filterFnames(fnames,pattern)
 		fnames = fnames(mask);
 end
 
-function bool = checkDataConsistency(fname_mod1, fname_mod2)
+function bool = checkDataConsistency(fnameMod1, fnameMod2)
 %CHECKDATACONSISTENCY Description
-%	BOOL = CHECKDATACONSISTENCY(FNAME_MOD1, FNAME_MOD2) Long description
+%	BOOL = CHECKDATACONSISTENCY(FNAMEMOD1, FNAMEMOD2) Long description
 %
 
-		fname_mod1 = {fname_mod1.name};
-		fname_mod2 = {fname_mod2.name};
+		fnameMod1 = {fnameMod1.name};
+		fnameMod2 = {fnameMod2.name};
 
-		[~,mod1,~] = cellfun(@fileparts,fname_mod1,'uni',false);
-		[~,mod2,~] = cellfun(@fileparts,fname_mod2,'uni',false);
+		[~,mod1,~] = cellfun(@fileparts,fnameMod1,'uni',false);
+		[~,mod2,~] = cellfun(@fileparts,fnameMod2,'uni',false);
 
 		nMod1Files = numel(mod1);
 		nMod2Files = numel(mod2);
@@ -438,56 +413,42 @@ function newloc = findTENSArtefact(data, fs)
 
 		data = abs(data);
 
-		data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
-		data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
+		dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
+		dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
         
 		if fs > 700			
             
-			data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+			dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
 			
 		end
-		data_bp = wlb_bandpass_fft(mean(abs(data_bp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
+		dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
     pctg = 80;
-		thr = prctile(data_bp,pctg);
+		thr = prctile(dataBp,pctg);
 		while(thr<0)
 				pctg = pctg +1;
-				thr = prctile(data_bp,pctg);        
+				thr = prctile(dataBp,pctg);        
 		end
         
-		[pks,pks_locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
-% 		tmpThr = mean(pks);%+2*std(pks);
-% 		pks_locs( pks < tmpThr) = [];
-% 		pks( pks < tmpThr) = [];
-
-		if(length(pks_locs)>2)
+		[pks,pksLocs] = findpeaks(dataBp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
+		if(length(pksLocs)>2)
 				% in general we should have only two tens 
 				% but we might end up with some weird artefacts
 
 
 				[val,I] = sort(pks,'descend');
-% %				tmp_pks_locs = pks_locs(I);
-% %				tmp_pks			 = val(1:3);
-% 				[x,y] = meshgrid(pks_locs);
-% 				pks_dist = (x-y);
-% 
-% 				[firstPeak, secondPeak] =	find(pks_dist == max(pks_dist(:)));
-% 				pks_locs = pks_locs([firstPeak,secondPeak]);
-% 				pks 		 = pks([firstPeak,secondPeak]);
-
-%				thr 			= val(3)*10;
 				pks 			= val(1:2);
-				pks_locs	= pks_locs(I);
-				pks_locs	= pks_locs(1:2);
+				pksLocs	= pksLocs(I);
+				pksLocs	= pksLocs(1:2);
 
 		end
 
-		[locs] = find(abs(diff((data_bp>thr))));
-		data_bp_der = -savitzkyGolayFilt(data_bp,4,1,11);
-		locs_der = data_bp_der(locs);
+		[locs] = find(abs(diff((dataBp>thr))));
+		dataBpDer = -savitzkyGolayFilt(dataBp,4,1,11);
+		locsDer = dataBpDer(locs);
 		
-		if(locs_der(1)<0),locs(1)=[];locs_der(1)=[];end
-		if(locs_der(end)>0),locs(end)=[];locs_der(end)=[];end
+		if(locsDer(1)<0),locs(1)=[];end
+		if(locsDer(end)>0),locs(end)=[];end
 	 
 		locs = reshape(locs,2,numel(locs)/2);
 		
@@ -499,10 +460,10 @@ function newloc = findTENSArtefact(data, fs)
 		
  		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
 				for i=1:numel(pks)
-						loc = locs( abs(locs-pks_locs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
-						start_loc = find(loc-pks_locs(i)<0,1,'first');
-						end_loc = find(loc-pks_locs(i)>0,1,'last');
-						loc = [loc(start_loc) loc(end_loc)];
+						loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
+						startLoc = find(loc-pksLocs(i)<0,1,'first');
+						endLoc = find(loc-pksLocs(i)>0,1,'last');
+						loc = [loc(startLoc) loc(endLoc)];
 						if ~isempty( loc )
 							newloc = [newloc loc];
 						end
@@ -512,5 +473,23 @@ function newloc = findTENSArtefact(data, fs)
  		end
           
 		newloc = sort(newloc,'ascend');
+
+end
+
+function tau = manualTENS(D,method)
+%MANUALTENS Description
+%	TAU = MANUALTENS(D,locs) Long description
+%
+	warnMessage = sprintf('You should pick only %d point(s)',method);
+	warndlg(warnMessage);
+	f1 = figure;
+	imf = ceemdan(D,0.0002,20,100,1);
+	plot(bsxfun(@plus,imf,max(imf(:))*(1:(size(imf,1)))')')
+	addCrossair(f1);
+
+	waitfor(f1)
+
+	tau = evalin('base','cursorValue');
+	
 
 end
