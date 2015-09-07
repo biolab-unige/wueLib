@@ -3,6 +3,8 @@ function status = wlb_EMGPCSSynch(varargin)
 %	FLAG = WLBTENSSYNCH(VARARGIN) I'll edit it when it will be ready
 
 % Edited 2015-06-15 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
+		global globDebug;
+
 		p = inputParser;
 		p.addRequired('pathEmg',@ischar);
 		p.addRequired('pathPcs',@ischar);
@@ -37,6 +39,10 @@ function status = wlb_EMGPCSSynch(varargin)
 				emgFileNames = filterFnames(emgFileNames,fnameFilters);
 		end
 
+		if isempty(pcsFileNames)
+				error('Empty Files check directory');
+		end
+
 
 		for fileIdx = 1 : numel(pcsFileNames)
 
@@ -54,9 +60,9 @@ function status = wlb_EMGPCSSynch(varargin)
 				trialIdx = str2double(cell2mat(regexp(trialIdx,'\d+','match')));
 				eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
 				eveFname = fullfile(pathEvents,eveFname.name);
-				tensFname= regexprep(eveFname,'events','tens');
+%				tensFname= regexprep(eveFname,'events','tens');
 
-				fprintf('Synch:\t%s\n\t%s\n\t%s\n',pcsFname,emgFname,tensFname);
+				fprintf('Synch:\t%s\n\t%s\n\t%s\n',pcsFname,emgFname,eveFname);
 
 				eventsInfo = [];
 				if ~isempty(p.Results.pathEvents)
@@ -75,7 +81,7 @@ function status = wlb_EMGPCSSynch(varargin)
 
 						% pick the first channel
 						pcsChIdx = p.Results.pcsRefChannel;
-						emgChIdx = find(ismember(lower(emgHdr.labels),{'artefakt_pulse','tens_pulse'})==1 );
+						emgChIdx = find(ismemberWildcards(lower(emgHdr.labels),{'artefa.t_pulse','tens_pulse'})==1 );
 
 						if isempty(pcsChIdx ) || isempty(emgChIdx)
 								error('Invalid reference channel');
@@ -83,13 +89,15 @@ function status = wlb_EMGPCSSynch(varargin)
 
 						pcsCh = pcsData(pcsChIdx,:);
 						emgCh = emgData(emgChIdx,:);
-	
-						figure(1000),clf
-						hold on
-						plot(pcsCh.*1e4)
-						plot(emgCh,'r')
-						title('original data');
-						legend([{'pcs'},{'emg'}])
+						
+						if globDebug
+								figure(1000),clf
+								hold on
+								plot(pcsCh.*1e4)
+								plot(emgCh,'r')
+								title('original data');
+								legend([{'pcs'},{'emg'}])
+						end
 
 										
 						% search for the TENS artefact 
@@ -174,27 +182,29 @@ function status = wlb_EMGPCSSynch(varargin)
 						pcsHdr.labels(end+1) 	= {'none'};
 						pcsHdr.chanUnits(pcsChannels) = {'mV'};
 						outHdr.chanunit = [pcsHdr.chanUnits, emgHdr.units];
-						
-						wndPlot = -100:100;
-						figure(666), clf
-						subplot(211)
-						hold on, plot(pcsData(pcsChIdx,wndPlot + t0(1)).*1e4,'r');
-						plot(emgData(emgChIdx,wndPlot + t0(2)),'k');
-						legend([{'pcs'},{'emg'}])
 
-						if(method == 2)
-								subplot(212)
-								hold on, plot(pcsData(pcsChIdx,wndPlot + t0(3)).*1e4,'r');
-								plot(emgData(emgChIdx,wndPlot+ t0(4)),'k');
-						end
-						drawnow
+						if globDebug	
+								wndPlot = -100:100;
+								figure(666), clf
+								subplot(211)
+								hold on, plot(pcsData(pcsChIdx,wndPlot + t0(1)).*1e4,'r');
+								plot(emgData(emgChIdx,wndPlot + t0(2)),'k');
+								legend([{'pcs'},{'emg'}])
 						
-						figure(999),clf
-						hold on
-						plot(pcsDataOut(pcsChIdx,:).*1e4)
-						plot(emgDataOut(emgChIdx,:),'r')
-						title('data synched');
-						legend([{'pcs'},{'emg'}])
+								if(method == 2)
+										subplot(212)
+										hold on, plot(pcsData(pcsChIdx,wndPlot + t0(3)).*1e4,'r');
+										plot(emgData(emgChIdx,wndPlot+ t0(4)),'k');
+								end
+								drawnow
+									
+								figure(999),clf
+								hold on
+								plot(pcsDataOut(pcsChIdx,:).*1e4)
+								plot(emgDataOut(emgChIdx,:),'r')
+								title('data synched');
+								legend([{'pcs'},{'emg'}])
+						end
 						
 						pcsHdr.labels = pcsHdr.labels([1,2]);
 						pcsHdr.chanUnits = pcsHdr.chanUnits([1,2]);
@@ -224,7 +234,7 @@ function status = wlb_EMGPCSSynch(varargin)
 						% this is the only supported data format
 						outHdr.DataFormat      = 'BINARY';
 						outHdr.DataOrientation = 'MULTIPLEXED';
-						outHdr.BinaryFormat    = 'IEEEFLOAT32';
+						outHdr.BinaryFormat    = 'IEEE_FLOAT_32';
 
 						% no additional calibration needed, since float32
 						outHdr.resolution      = ones(size(outHdr.label));      
@@ -241,10 +251,10 @@ function status = wlb_EMGPCSSynch(varargin)
 				outHdr.MarkerFile = '';
 								
 				write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
-								if(~isempty(eventsInfo))
-										outHdr.MarkerFile = strcat(filename,'.vmrk');
-										write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);	
-								end
+				if(~isempty(eventsInfo))
+						outHdr.MarkerFile = strcat(filename,'.vmrk');
+						write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);	
+				end
 								
 				write_brainvision_vhdr(p.Results.outdir, outHdr);
 
@@ -410,7 +420,10 @@ end
 function newloc = findTENSArtefact(data, fs)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
-
+	  global globDebug	
+		if globDebug
+				figure, plot(data.*1e-2), hold on;
+		end
 		data = abs(data);
 
 		dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
@@ -437,7 +450,7 @@ function newloc = findTENSArtefact(data, fs)
 
 
 				[val,I] = sort(pks,'descend');
-				pks 			= val(1:2);
+				pks 		= val(1:2);
 				pksLocs	= pksLocs(I);
 				pksLocs	= pksLocs(1:2);
 
@@ -449,12 +462,18 @@ function newloc = findTENSArtefact(data, fs)
 		
 		if(locsDer(1)<0),locs(1)=[];end
 		if(locsDer(end)>0),locs(end)=[];end
+
+		if globDebug
+				plot(dataBp,'r');
+				plot(locs,dataBp(locs),'ko');
+		end
+
 	 
 		locs = reshape(locs,2,numel(locs)/2);
 		
 		duration = diff(locs);
 		
-		locs = locs(:,duration>1.5*fs);
+		locs = locs(:,duration>0.8*fs);
         
 		newloc = [];
 		
@@ -474,6 +493,12 @@ function newloc = findTENSArtefact(data, fs)
           
 		newloc = sort(newloc,'ascend');
 
+		if globDebug
+				plot(newloc,dataBp(newloc),'kx','MarkerSize',5);
+		end
+
+
+
 end
 
 function tau = manualTENS(D,method)
@@ -492,4 +517,23 @@ function tau = manualTENS(D,method)
 	tau = evalin('base','cursorValue');
 	
 
+end
+
+
+function mask = ismemberWildcards(stringsIn, patterns)
+%ISMEMBERWILDCARDS Description
+%	MASK = ISMEMBERWILDCARDS(STRINGSIN, PATTERNS) Long description
+%
+	
+	nStrings = numel(stringsIn);
+	nPatterns= numel(patterns);
+
+	mask = cellfun(@(x) regexp(x,patterns),stringsIn,'Uni',false);
+	mask = [mask{:}];
+	mask = reshape(mask,[nPatterns,nStrings]);
+	mask(cellfun(@isempty,mask)) = {0};
+
+	mask = cell2mat(mask);
+
+	mask = sum(mask) >= 1;
 end

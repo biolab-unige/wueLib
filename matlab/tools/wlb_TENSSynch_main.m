@@ -3,7 +3,7 @@ function status = wlb_TENSSynch_main(varargin)
 %	FLAG = BNTENSSYNCHMAIN(VARARGIN) 
 %	USAGE:
 %		
-
+global globDebug;
 
 % Edited 2014-09-22 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 
@@ -18,6 +18,7 @@ function status = wlb_TENSSynch_main(varargin)
 		p.addParamValue('pcsCuttingTime',0,@isnumeric);
 		p.addParamValue('emgCuttingTime',0,@isnumeric);
 		p.addParamValue('automaticDetection',true,@islogical);
+		p.addParamValue('debug',false,@islogical);
 
 
 		p.parse(varargin{:});
@@ -43,6 +44,8 @@ function status = wlb_TENSSynch_main(varargin)
 		if ~isempty(p.Results.emgCuttingTime)
 				emgCuttingTime = p.Results.emgCuttingTime;
 		end
+
+		globDebug = p.Results.debug;
 
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fNameFilters;
