@@ -1,4 +1,4 @@
-function flag = bn_EEGEMGPCSSynch(path_pcs,path_hdeeg,path_emg)
+function status = wlb_EEGEMGPCSSynch(varargin)
 %BN_TENSSYNCH synchronize multiple files in the same vhdr/eeg file
 %	FLAG = BN_TENSSYNCH(VARARGIN) I'll edit it when it will be ready
 %
@@ -6,361 +6,346 @@ function flag = bn_EEGEMGPCSSynch(path_pcs,path_hdeeg,path_emg)
 % Edited 2014-09-22 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
 %
 %%% DEFINE SUPPORTED FILE EXTENSIONS %%%%
-ext_hdeeg 				= '*.eeg';
-ext_pcs 					= '*.xml';
-ext_emg 					= '*.txt';
-event_timeoffset 	= 0;
+		global globDebug;
 
-fname_pcs 				= dir(fullfile(path_pcs,ext_pcs));
-fname_hdeeg 			= dir(fullfile(path_hdeeg,ext_hdeeg));
-fname_emg		 			= dir(fullfile(path_emg,ext_emg));
+		p = inputParser;
+		p.addRequired('pathEmg',@ischar);
+		p.addRequired('pathPcs',@ischar);
+		p.addRequired('pathHdeeg',@ischar);
+		p.addRequired('outdir',@ischar);
 
-assert(checkDataConsistency(fname_hdeeg,fname_pcs),...
-		'Number of hdeeg files and pcs files do not match');
+		p.addOptional('pathEvents','',@ischar)
+		p.addOptional('fnameFilters',{''},@iscell);
 
-assert(checkDataConsistency(fname_hdeeg,fname_emg),...
-		'Number of hdeeg files and emg files do not match');
+		p.addOptional('pcsRefChannel',2,@isnumeric);
+		p.addOptional('pcsCuttingTime',0,@isnumeric);
+		p.addOptional('emgCuttingTime',0,@isnumeric);
+		p.addOptional('eegCuttingTime',0,@isnumeric);
+		p.addOptional('automaticDetection',true,@islogical);
 
-fname_hdeeg = filterFnames(fname_hdeeg,'reachandgrasp');
-fname_hdeeg = filterFnames(fname_hdeeg,'trial2');
+		p.parse(varargin{:});
 
-for i =1:length(fname_hdeeg)
-    disp([num2str(i) ' - ' fname_hdeeg(i).name])
+		pathPcs = p.Results.pathPcs;
+		pathEmg = p.Results.pathEmg;
+		pathHdeeg = p.Results.pathHdeeg;
+		pathEvents = p.Results.pathEvents;
+		fnameFilters = p.Results.fnameFilters;
 
-    % read eeg header file
-    fname_eeg_parts = strsplit(fname_hdeeg(i).name,{'_','.'});
-    fname_pcs = [strjoin([fname_eeg_parts([1 2]) {'OFF'}...
-        fname_eeg_parts([4:end-1])],'_'), '.xml'];
+		% get filenames within each path
+		pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
+		emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
+		eegFileNames = dir(fullfile(pathHdeeg,'*.eeg'));
 
-    fname_emg = [strjoin([fname_eeg_parts([1 2]) {'OFF'}...
-        fname_eeg_parts([4:end-1])],'_'), '.txt'];
-        
-    eeg_hdr  = read_brainvision_vhdr(fullfile(path_hdeeg,...
-				strcat(strtok(fname_hdeeg(i).name,'.'),'.vhdr')));
-    eeg_data = read_brainvision_eeg(fullfile(path_hdeeg,...
-				strcat(strtok(fname_hdeeg(i).name,'.'),'.eeg')),...
-        eeg_hdr,0,eeg_hdr.nSamples);
+		eveFileNames = dir(fullfile(pathEvents,'*event*.csv'));
 
-		[p f e] = fileparts(fname_hdeeg(i).name);
+		assert(checkDataConsistency(pcsFileNames,emgFileNames),...
+				'Number of emg files and pcs files do not match');
 
-%    eeg_event = read_brainvision_vmrk(fullfile(path_hdeeg,eeg_hdr.MarkerFile));
-		eeg_event = bn_readExternalEventFile(fullfile(path_hdeeg,strcat(f,'.mrk')));
-    
-   
-    [pcs_hdr, pcs_data] = bn_readActivaPC( fullfile(path_pcs,fname_pcs));
-		[emg_hdr, emg_data] = bn_readEMG_wue( fullfile(path_emg,fname_emg));
-    
-    % pick the first channel
-    pcs_data = pcs_data'.*1e3;
-    pcs_data = pcs_data(:,pcs_cuttingtime*793:end);
-    eeg_data = eeg_data(:,eeg_cuttingtime*eeg_hdr.Fs:end);
+		assert(checkDataConsistency(pcsFileNames,eegFileNames),...
+				'Number of hdeeg files and pcs files do not match');
 
-    pcs_ch_idx = 1;
-    eeg_ch_idx = 10;
-		emg_ch_idx = 3;
 
-		pcs_locs = findTENSArtefact(pcs_data(pcs_ch_idx,:));
-		eeg_locs = findTENSArtefact(eeg_data(eeg_ch_idx,:));
-		emg_locs = findTENSArtefact(emg_data(emg_ch_idx,:));
-    
-%    pcs_ch = pcs_data(pcs_ch_idx,:);
-%    pcs_ch_bp = process_bandpass('Compute', pcs_ch, 793, 90, 110, [],1);
-%    pcs_ch_bp(:,:,2) = process_bandpass('Compute', pcs_ch, 793, 190, 210, [],1);
-%    pcs_ch_bp(:,:,3) = process_bandpass('Compute', pcs_ch, 793, 290, 310, [],1);
-%    pcs_ch_bp = process_bandpass('Compute', ...
-%				mean(abs(pcs_ch_bp(:,:,:)),3), 793, .001, 1, [],1);
-%
-%    thr = 3*std(pcs_ch_bp);
-%    [pks,locs] = findpeaks(pcs_ch_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*793);
-%    if(length(locs)>2)
-%        [val,idx] = sort(pks,'descend');
-%        thr = val(3)+2*eps;
-%    end
-%    
-%    [pcs_locs] = find(abs(diff((pcs_ch_bp>thr))));
-%    if(length(pcs_locs)==3)
-%        start_end = find(diff(pcs_locs)>5*793);
-%        if (start_end == 1)
-%            pcs_locs = [1 pcs_locs];
-%        else
-%            pcs_locs = pcs_locs(1:2);
-%        end
-%    end
-%    
-%    
-%    eeg_ch = eeg_data(eeg_ch_idx,:);
-%    eeg_ch_bp = process_bandpass('Compute', eeg_ch, ...
-%				eeg_hdr.Fs, 90, 110, [],1);
-%
-%    eeg_ch_bp(:,:,2) = process_bandpass('Compute', eeg_ch,...
-%				eeg_hdr.Fs , 190, 210, [],1);
-%
-%    eeg_ch_bp(:,:,3) = process_bandpass('Compute', eeg_ch, ....
-%				eeg_hdr.Fs, 290, 310, [],1);
-%
-%    eeg_ch_bp = process_bandpass('Compute', ...
-%				mean(abs(eeg_ch_bp(:,:,:)),3), eeg_hdr.Fs, 0.001, 1, [],1);
-%
-%    thr = 3*std(eeg_ch_bp);
-%    [pks,locs] = findpeaks(eeg_ch_bp,'MINPEAKHEIGHT',thr,...
-%				'MINPEAKDISTANCE',10*eeg_hdr.Fs);
-%
-%    if(length(locs)>2)
-%        [val,idx] = sort(pks,'descend');
-%        thr = val(3)+2*eps;
-%    end
-%    
-%    [eeg_locs] = find(abs(diff((eeg_ch_bp>thr))));
-%        if(length(eeg_locs)==3)
-%        start_end = find(diff(eeg_locs)>5*eeg_hdr.Fs);
-%        if (start_end == 1)
-%            eeg_locs = [1 eeg_locs];
-%        else
-%            eeg_locs = eeg_locs(1:2);
-%        end
-%    end
-%
-%    emg_ch = emg_data(emg_ch_idx,:);
-%    emg_ch_bp = process_bandpass('Compute', emg_ch, ...
-%				emg_hdr.freq, 90, 110, [],1);
-%
-%    emg_ch_bp(:,:,2) = process_bandpass('Compute', emg_ch,...
-%				emg_hdr.freq , 190, 210, [],1);
-%
-%    emg_ch_bp(:,:,3) = process_bandpass('Compute', emg_ch, ....
-%				emg_hdr.freq, 290, 310, [],1);
-%
-%    emg_ch_bp = process_bandpass('Compute', ...
-%				mean(abs(emg_ch_bp(:,:,:)),3), emg_hdr.freq, 0.001, 1, [],1);
-%
-%    thr = 3*std(emg_ch_bp);
-%    [pks,locs] = findpeaks(emg_ch_bp,'MINPEAKHEIGHT',thr,...
-%				'MINPEAKDISTANCE',10*emg_hdr.freq);
-%
-%    if(length(locs)>2)
-%        [val,idx] = sort(pks,'descend');
-%        thr = val(3)+2*eps;
-%    end
-%    
-%    [emg_locs] = find(abs(diff((emg_ch_bp>thr))));
-%        if(length(emg_locs)==3)
-%        start_end = find(diff(emg_locs)>5*emg_hdr.freq);
-%        if (start_end == 1)
-%            emg_locs = [1 emg_locs];
-%        else
-%            emg_locs = emg_locs(1:2);
-%        end
-%    end
-
-    method = min([length(eeg_locs)/2,length(pcs_locs)/2,length(emg_locs)/2])
-    
-    % actually compute t0 for all channels
-    data_cell = [{eeg_ch},{pcs_ch},{emg_ch}];
-    
-    t0 = cellfun(@find_t_init,data_cell,{eeg_locs,pcs_locs,emg_locs},...
-					{eeg_hdr.Fs,pcs_hdr.SenseChannelConfig.TDSampleRate,emg_hdr.freq},...
-					{method, method,method},'uni',false);
-
-    t0 = reshape([t0{:}],2,3)';
-       
-    if( method == 2 )
-        % estimate the correct fs for PCS
-        pcs_fs = (t0(2,2)-t0(2,1))* eeg_hdr.Fs /(t0(1,2)-t0(1,1))
-    else
-        t0(:,2) = [length(eeg_ch) length(pcs_ch) length(emg_ch)];
-        pcs_fs = 793.65
-    end
-    
-    
-    % downsample pcs data to integer sampling frequency and eeg accordingly
-    fs 			= 500;
-    [pcs_data,~,~] = ResampleCascade(pcs_data,fs,pcs_fs);
-    eeg_data 	= resample(eeg_data',fs,eeg_hdr.Fs)';
-    emg_data 	= resample(emg_data',fs,emg_hdr.freq)';
-    
-		% each t0 row represent eeg,pcs,emg data before
-		% we have to recompute the exact point in time after
-		% resampling
-    t0(1,:) = (round(t0(1,:)/eeg_hdr.Fs*pcs_fs));
-    t0(3,:) = (round(t0(3,:)/emg_hdr.freq*pcs_fs));
-    t0 			= round(t0/pcs_fs*fs);
-           
-		% also compute the sample indices for each events with new sampling freq
-		for evIdx = 1:numel(eeg_event)
-				eeg_event(evIdx).samples = round(eeg_event(evIdx).times * fs)...
-						+ min(t0(:,1));
-
-				eeg_event(evIdx).times	 = eeg_event(evIdx).times + min(t0(:,1))/fs;
+		if ~isempty(fnameFilters{1})
+				pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
+				emgFileNames = filterFnames(emgFileNames,fnameFilters);
+				eegFileNames = filterFnames(eegFileNames,fnameFilters);
 		end
 
+		for fileIdx =1:numel(pcsFileNames)
 
-    % t0 has start and end samples for each channel
-    % cut data to have the same number of samples
-    onset  			= min(t0(:,1));
-    off 		 		= [1 -1;1 -1; 1 -1] * onset ;
-    data_wnd		= t0 - off;
-        
-    eeg_data_out 	= eeg_data(:,1+data_wnd(1,1):...
-				min([data_wnd(1,2),length(eeg_data)]));
+				pcsFname = fullfile(pathPcs,pcsFileNames(fileIdx).name);
+				emgFname = fullfile(pathEmg,emgFileNames(fileIdx).name);
+				eegFname = fullfile(pathHdeeg,eegFileNames(fileIdx).name);
 
-    pcs_data_out 	= pcs_data(:,1+data_wnd(2,1):...
-				min([data_wnd(2,2),length(pcs_data)]));
+				% files has been renamed to match 
+				% subject_studyName_drug_trial##_modality.**
+				drugCondition = regexp(pcsFname,'_','split');
 
-    emg_data_out 	= emg_data(:,1+data_wnd(3,1):...
-				min([data_wnd(3,2),length(emg_data)]));
-    
-    final_size   	= min([size(eeg_data_out,2),...
-												size(pcs_data_out,2),....
-												size(emg_data_out,2)]);
-    data_out 	 		= [eeg_data_out(:,1:final_size); ...
-										 pcs_data_out(:,1:final_size);...
-										emg_data_out(:,1:final_size)];
-    
-    pcs_channels	= size(pcs_data,1);
-		emg_channels  = size(emg_data,1);
-    
-    if(pcs_channels == 1)
-        data_out  = [data_out; zeros(1,size(data_out,2))];
-				pcs_channels = 2;
-    end
-    
-    pcs_hdr.labels(end+1) 	= {'none'};
-    eeg_hdr.chanunit([127 128]) = {'muV'};
-		eeg_hdr.chanunit = [eeg_hdr.chanunit, emg_hdr.units];
-    
-    figure(1), clf
-    subplot(311)
-    plot(eeg_data(eeg_ch_idx,[-100:100] + t0(1))),
-		hold on, plot(pcs_data(pcs_ch_idx,[-100:100] + t0(2)).*10,'r');
-		plot(emg_data(emg_ch_idx,[-100:100] + t0(3)),'k');
+				% pick drug string
+				drugCondition = drugCondition{3};
 
-    if(method == 2)
-        subplot(312)
-        plot(eeg_data(eeg_ch_idx,[-100:100] + t0(4))),
-				hold on, plot(pcs_data(pcs_ch_idx,[-100:100] + t0(5)).*10,'r');
-				plot(emg_data(emg_ch_idx,[-100:100] + t0(6)),'k');
-    end
-    subplot(313),
-    plot(data_out([eeg_ch_idx end-1:end],:)');
-    drawnow
-    
-    if(event_timeoffset)
-        mtmdata_file=fullfile(event_offset_dir, [strjoin({fname_eeg_parts{2},...
-						fname_eeg_parts{end-1}},'_'),'.txt']);
+				trialIdx = cell2mat(regexp(pcsFname,'trial\d+','match'));
+				if isempty( trialIdx ) 
+						% this means that we are considering sets of trials in a 
+						% single eeg data sesssion
+						setIdx = cell2mat(regexp(pcsFname,'set\d+','match'));
+						setIdx = str2double(cell2mat(regexp(setIdx,'\d+','match')));
+						eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
+						eveFname = eveFname(~cellfun(@isempty,regexp({eveFname.name},strcat('set',num2str(setIdx)))));
+						eveFname = fullfile(pathEvents,eveFname.name);
 
-        [out, delimiter, headerlines] = importdata(mtmdata_file);
-        offset = out.data(:,4);
-        iMrk = find(strcmpi({eeg_event.label}, event_marker_label));
-        if(length(offset)== size(eeg_event(iMrk).samples,2))
-            for offset_idx = 1:length(offset)
-            eeg_event(iMrk).samples(:,offset_idx)=...
-								round(eeg_event(iMrk).samples(:,offset_idx)/...
-                eeg_hdr.Fs*fs)+ repmat(round(offset(offset_idx)*1e-3*fs),...
-                size(eeg_event(iMrk).samples,1),1)-data_wnd(1,1)...
-								-eeg_cuttingtime*fs;
-            end
-        else 
-            error('Offset length differs from event length');
-        end
-    end
-    
-    % update header info
-    eeg_hdr.label 	= [eeg_hdr.label; pcs_hdr.labels';emg_hdr.labels'];
-    eeg_hdr.nChans 	= eeg_hdr.NumberOfChannels + pcs_channels + emg_channels;
-    eeg_hdr.NumberOfChannels = eeg_hdr.nChans;
-    eeg_hdr.Fs			= fs;
-    
-    for ii = 1:2
+				else
+						% we here separate trials in single files
+						trialIdx = str2double(cell2mat(regexp(trialIdx,'\d+','match')));
+						eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
+						eveFname = fullfile(pathEvents,eveFname.name);
+				end
 
-        stn_pos_struct(ii)  = struct('type','stn',...
-            'labels',pcs_hdr.labels(ii),...
-            'sph_theta_besa',-134,...
-            'sph_phi_besa',-45);
-    end
+				fprintf('Synch:\t%s\n\t%s\n\t%s\n\t%s\n',pcsFname,emgFname,eegFname,eveFname);
 
-		for ii = 1:emg_channels
+				eventsInfo = [];
+				if ~isempty(p.Results.pathEvents)
+					eventsInfo = wlb_readExternalEventFile( eveFname, trialIdx );
+				end
 
-        emg_pos_struct(ii)  = struct('type','emg',...
-            'labels',emg_hdr.labels(ii),...
-            'sph_theta_besa',-134,...
-            'sph_phi_besa',-45);
+%				try
+						% read pcs header file
+						[pcsHdr, pcsData] = wlb_readActivaPC( pcsFname );
+						[emgHdr, emgData] = wlb_readEMG_wue( emgFname );
+						[eegHdr, eegData] = wlb_readBrainvision( eegFname );
+					 
+						% cut data if needed
+						pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,...
+								pcsHdr.SenseChannelConfig.TDSampleRate);
+						emgData = cutInitialSamplesData(emgData,p.Results.emgCuttingTime,emgHdr.freq);
+						eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
+
+						% define TENS channels
+						pcsChIdx = p.Results.pcsRefChannel;
+						emgChIdx = find(ismemberWildcards(lower(emgHdr.labels),{'art.fa.t_pulse','tens_pulse'})==1 );
+						eegChIdx = 1;
+
+						if isempty(pcsChIdx ) || isempty(emgChIdx) || isempty(eegChIdx)
+								error('Invalid reference channel');
+						end	
+					
+						% extract TENS channels
+						pcsCh = pcsData(pcsChIdx,:);
+						emgCh = emgData(emgChIdx,:);
+						eegCh = eegData(eegChIdx,:);
+						
+						% find time windows containing TENS
+						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate);
+						eegLocs = findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval);
+						emgLocs = findTENSArtefact(emgData(emgChIdx,:),emgHdr.freq);
+						
+						method = min([length(eegLocs)/2,length(pcsLocs)/2,length(emgLocs)/2]);
+						
+						% actually compute t0 for all channels
+						dataCell = [{eegCh},{pcsCh},{emgCh}];
+						
+						t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs,emgLocs},...
+									{eegHdr.Fs,pcsHdr.SenseChannelConfig.TDSampleRate,emgHdr.freq},...
+									{method, method,method},'uni',false);
+
+						t0 = reshape([t0{:}],2,3)';
+							 
+						if( method == 2 )
+								% estimate the correct fs for PCS
+								pcsFs = (t0(2,2)-t0(2,1))* eegHdr.Fs /(t0(1,2)-t0(1,1));
+						else
+								t0(:,2) = [length(eegCh) length(pcsCh) length(emgCh)];
+								pcsFs = 793.65;
+						end
+					
+						
+						% downsample pcs data to integer sampling frequency and eeg accordingly
+						fs 						= 400;
+						[pcsData,~,~] = ResampleCascade(pcsData,fs,pcsFs);
+						eegData 			= resample(eegData',fs,eegHdr.Fs)';
+						emgData 			= resample(emgData',fs,emgHdr.freq)';
+						
+						% each t0 row represent eeg,pcs,emg data before
+						% we have to recompute the exact point in time after
+						% resampling
+						t0(1,:) = (round(t0(1,:)/eegHdr.Fs*pcsFs));
+						t0(3,:) = (round(t0(3,:)/emgHdr.freq*pcsFs));
+						t0 			= round(t0/pcsFs*fs);
+									 
+						% also compute the sample indices for each events with new sampling freq
+						for evIdx = 1:numel(eventsInfo)
+							
+							if (eventsInfo(evIdx).times >=0)
+								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ min(t0(:,1));						
+							  eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
+
+							else
+								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ max(t0(:,1));
+								eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + max(t0(:,1))/fs;
+							end
+
+						end
+
+
+						% t0 has start and end samples for each channel
+						% cut data to have the same number of samples
+						% We compute the smallest offset possible in the initial
+						% samples prior each TENS artefact
+						eegDataOut 	= eegData(:,max([1,t0(1,1)-t0(2,1),t0(1,1)-t0(3,1)]):end);
+						pcsDataOut 	= pcsData(:,max([1,t0(2,1)-t0(1,1),t0(2,1)-t0(3,1)]):end);
+						emgDataOut 	= emgData(:,max([1,t0(3,1)-t0(1,1),t0(3,1)-t0(2,1)]):end);
+						
+						% the we determine the minimun data length
+						finalSize  	= min([size(eegDataOut,2),...
+																size(pcsDataOut,2),....
+																size(emgDataOut,2)]);
+						% cut accordingly each modality and pack everything
+						% in a single data matrix
+						dataOut 	 	= [eegDataOut(:,1:finalSize); ...
+														pcsDataOut(:,1:finalSize);...
+														emgDataOut(:,1:finalSize)];
+						
+						pcsChannels	= size(pcsData,1);
+						emgChannels = size(emgData,1);
+
+						% if we recorded only one side with PCs 
+						% we just add an empty row to prevent channel size 
+						% incosisntencies across modalities and to prevent errors
+						% in cases we mixed recording techinques such as one trial with 1 STN
+						% and another with 2 STN
+						if(pcsChannels == 1)
+								dataOut  = [dataOut; zeros(1,size(dataOut,2))];
+								pcsChannels = 2;
+						end
+						
+						pcsHdr.labels(end+1) = {'none'};
+						pcsHdr.chanunit(1:2) = {'muV'};
+						emgHdr.chanunit(1:emgChannels) = {'mV'};
+
+						outHdr.chanunit = [eegHdr.chanunit, emgHdr.chanunit, pcsHdr.chanunit];
+
+						if globDebug	
+								figure(1), clf
+								subplot(311)
+								plot(eegData(eegChIdx,-100:100 + t0(1))),
+								hold on, plot(pcsData(pcsChIdx,-100:100 + t0(2)).*10,'r');
+								plot(emgData(emgChIdx,-100:100 + t0(3)),'k');
+
+								if(method == 2)
+										subplot(312)
+										plot(eegData(eegChIdx,-100:100 + t0(4))),
+										hold on, plot(pcsData(pcsChIdx,-100:100 + t0(5)).*10,'r');
+										plot(emgData(emgChIdx,-100:100 + t0(6)),'k');
+								end
+								subplot(313),
+								plot(dataOut([eegChIdx end-1:end],:)');
+								drawnow
+						end
+						
+%						if(eventTimeoffset)
+%								mtmdataFile=fullfile(eventOffsetDir, [strjoin({fnameEegParts{2},...
+%										fnameEegParts{end-1}},'_'),'.txt']);
+%
+%								[out, delimiter, headerlines] = importdata(mtmdataFile);
+%								offset = out.data(:,4);
+%								iMrk = find(strcmpi({eegEvent.label}, eventMarkerLabel));
+%								if(length(offset)== size(eegEvent(iMrk).samples,2))
+%										for offsetIdx = 1:length(offset)
+%										eegEvent(iMrk).samples(:,offsetIdx)=...
+%												round(eegEvent(iMrk).samples(:,offsetIdx)/...
+%												eegHdr.Fs*fs)+ repmat(round(offset(offsetIdx)*1e-3*fs),...
+%												size(eegEvent(iMrk).samples,1),1)-dataWnd(1,1)...
+%												-eegCuttingtime*fs;
+%										end
+%								else 
+%										error('Offset length differs from event length');
+%								end
+%						end
+						
+						% update header info
+						outHdr.label 		= [eegHdr.label; emgHdr.labels'; pcsHdr.labels'];
+						outHdr.nChans		= eegHdr.NumberOfChannels + pcsChannels + emgChannels;
+						outHdr.NumberOfChannels = outHdr.nChans;
+						outHdr.chantype	=eegHdr.chantype;
+						outHdr.Fs				= fs;
+						
+						stnPosStruct = struct('type','stn',...
+										'labels',pcsHdr.labels,...
+										'sph_theta_besa',-134,...
+										'sph_phi_besa',-45);
+
+						emgPosStruct = struct('type','emg',...
+										'labels',emgHdr.labels,...
+										'sph_theta_besa',-134,...
+										'sph_phi_besa',-45);
+						
+						outHdr.layout.pos = [eegHdr.layout.pos,  emgPosStruct, stnPosStruct];
+						outHdr.chantype(end:outHdr.nChans) = {'other'};
+						
+						% this is the only supported data format
+						outHdr.DataFormat      = 'BINARY';
+						outHdr.DataOrientation = 'MULTIPLEXED';
+						outHdr.BinaryFormat    = 'IEEE_FLOAT_32';
+
+						% no additional calibration needed, since float32
+						outHdr.resolution      = ones(size(outHdr.label));      
+
+%				catch ME
+%						fprintf('%s\n',ME.message);
+%						continue;
+%				end
+
+				% write data
+				[~, fnamePcs, ~] = fileparts(pcsFname);
+				filename = strcat(fnamePcs,'EmgEeg');
+				
+				outHdr.DataFile = strcat(filename,'.eeg');
+				outHdr.MarkerFile = '';
+								
+				write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
+
+				if(~isempty(eventsInfo))
+						outHdr.MarkerFile = strcat(filename,'.vmrk');
+						write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);	
+				end
+								
+				write_brainvision_vhdr(p.Results.outdir, outHdr);
+					
+		end % for files
+
+		status = 0;
+
+
+end % function
+
+function tau = findTInit(D,locs,~,chunks)
+%FINDTINIT Description
+%	TAU = FINDTINIT(D,LOCS,CHUNKS) Long description
+%
+
+		% number of levels used for WICA and wavelet family
+		numLvl    = 8;
+		vfilter   = 'db1';
+		tau 			= nan(2,1);
+
+
+		for chunk = 0:chunks-1
+				
+				artefactIdx	= round(locs(1+(2*chunk))):round(locs(2+(2*chunk))) ;
+
+				artefactIdx(artefactIdx > numel(D)) = [];
+				artefactIdx(artefactIdx < 1) = [];
+				data 				= D(artefactIdx);
+
+				nsamples    = length(data);
+				offset      = ceil(nsamples/(2^numLvl)) * (2^numLvl);
+				
+				data(nsamples+1:offset) = zeros(1,offset-nsamples);
+						
+
+				[thr] = 0.5*ddencmp('den','wv',data);
+				
+				[swa, swd] = swt(data,numLvl, vfilter);
+
+				swd(abs(swd) < thr) = 0;
+				swd(3:numLvl,:) = zeros(size(swd(3:numLvl,:)));
+				swa = zeros(size(swa));
+				
+				out = iswt(swa,swd,vfilter)';
+				out = out(1:nsamples);
+				thresh = 2*std(abs(out));
+				
+				out( abs(out) <  std(abs(out)) ) = 0;
+				
+				[~, maxLocs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
+				dataLocs = max(maxLocs);				
+			
+				tau(chunk+1) = dataLocs + artefactIdx(1)-1;
 
 		end
-    
-    eeg_hdr.layout.pos = [eeg_hdr.layout.pos, stn_pos_struct, emg_pos_struct];
-		eeg_hdr.chantype(end:eeg_hdr.nChans) = {'other'};
-    
-    % this is the only supported data format
-    eeg_hdr.DataFormat      = 'BINARY';
-    eeg_hdr.DataOrientation = 'MULTIPLEXED';
-    eeg_hdr.BinaryFormat    = 'IEEE_FLOAT_32';
-
-		% no additional calibration needed, since float32
-    eeg_hdr.resolution      = ones(size(eeg_hdr.label));      
-    % write data
-    filename = strjoin({fname_eeg_parts{1:2},[fname_eeg_parts{3},'-PCS'],...
-				fname_eeg_parts{4:end-1}},'_');
-
-    eeg_hdr.DataFile = strcat(filename,'.eeg');
-    eeg_hdr.MarkerFile = strcat(filename,'.vmrk');
-    
-    write_brainvision_eeg(outdir, eeg_hdr, data_out);
-    write_brainvision_vmrk(outdir, eeg_hdr, eeg_event);
-    write_brainvision_vhdr(outdir, eeg_hdr);
-end
-
-end
-
-function tau = find_t_init(D,locs,Fs,chunks)
-
-% number of levels used for WICA and wavelet family
-num_lvl   = 8;
-vfilter   = 'db1';
-
-% below we separate the portions containing the TENS artefacts
-
-tau = [0 0];
-
-for chunk = 0:chunks-1
-    
-    artefact_duration = locs(2+2*chunk)-locs(1+2*chunk);
-    if((locs(2+2*chunk)+artefact_duration)<=length(D))
-        data0 				= D(locs(1+2*chunk):(locs(2+2*chunk)+artefact_duration));
-    else
-        data0 				= D(locs(1+2*chunk):end);
-    end
-    data 				= data0;
-
-    nsamples    = length(data);
-    offset      = ceil(nsamples/(2^num_lvl)) * (2^num_lvl);
-    
-    data(nsamples+1:offset) = zeros(1,offset-nsamples);
-    
-    [thr, ~, ~] = ddencmp('den','wv',data);
-    
-    [swa, swd] = swt(data,num_lvl, vfilter);
-
-    swd(abs(swd) < thr) = 0;
-    swd(3:num_lvl,:) = zeros(size(swd(3:num_lvl,:)));
-    swa = zeros(size(swa));
-    
-    out = iswt(swa,swd,vfilter)';
-    out = out(1:nsamples);
-    thresh = 2*std(abs(out((artefact_duration+1):end)));
-    
-    out( abs(out) <  std(out) ) = 0;
-    
-    [~, max_locs] = findpeaks((out),'MINPEAKHEIGHT',thresh);
-    [~, min_locs] = findpeaks(-(out),'MINPEAKHEIGHT',thresh);  
-
-    data_locs = max(max(max_locs),max(min_locs));
-    
-%     figure,
-%     subplot(2,1,1), plot(t,out,t(data_locs),out(data_locs),'rx');
-%     subplot(2,1,2), plot(t,data0,t(data_locs),data0(data_locs),'rx');
-    
-    tau(chunk+1) = data_locs + locs(1+2*chunk)-1;
-end
+		tau(isnan(tau)) = [];
+		figure,
+		plot(D) , hold on, plot(tau,D(tau),'rx');
 
 end
 
@@ -388,7 +373,8 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
     Rates = Pfac./Qfac;  % rates per step
     CRate = cumprod(Rates); % cumulative resampling rates
 
-    % We can't go below min(1,P/Q) without losing information. Because of low-pass filtering, don't be too precise
+    % We can't go below min(1,P/Q) without losing information. Because of low-pass filtering, 
+		% don't be too precise
     Problem = CRate < (0.9 * P/Q);
     if any(Problem)
         fprintf(1, 'RESAMPLE> Warning: Desired rate is %.f\n', P/Q);
@@ -405,18 +391,18 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
         % Decimate/interp inputs cannot be vectorized
         case 'decimate'
             % Initialize output parameters
-            len_resmp = ceil(size(x,2) * prod(Pfac) / prod(Qfac));
+            lenResmp = ceil(size(x,2) * prod(Pfac) / prod(Qfac));
             nRow = size(x,1);
-            x_resmp = zeros(nRow, len_resmp);
+            xResmp = zeros(nRow, lenResmp);
             % Loop on factors and rows
             for iRow = 1:size(x,1)
-                x_tmp = x(iRow,:);
+                xTmp = x(iRow,:);
                 for i = 1:iFacs
-                    x_tmp = decimate(interp(x_tmp, Pfac(i)), Qfac(i));
+                    xTmp = decimate(interp(xTmp, Pfac(i)), Qfac(i));
                 end
-                x_resmp(iRow,:) = x_tmp;
+                xResmp(iRow,:) = xTmp;
             end
-            x = x_resmp;
+            x = xResmp;
         % Resample takes vectorized inputs
         case 'resample'
             for i = 1:iFacs
@@ -425,27 +411,39 @@ function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
     end
 end
 
-function fname = filterFnames(fname,pattern)
+function fnames = filterFnames(fnames,pattern)
+%FILTERFNAMES Description
+%	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
+%
+		tmp = {fnames.name};
+		mask= zeros(numel(tmp),numel(pattern));
 
-		tmp = [{fname.name}];
-		mask = ~cellfun(@isempty,regexp(tmp,pattern));
-		fname = fname(mask);
+		for el = 1:numel(tmp)
+			mask(el,:) = ~cellfun(@isempty,regexp(tmp(el),pattern));
+		end
+
+		mask = logical(prod(mask,2));
+
+		fnames = fnames(mask);
 end
 
-function bool = checkDataConsistency(fname_hdeeg, fname_pcs)
+function bool = checkDataConsistency(fnameMod1, fnameMod2)
+%CHECKDATACONSISTENCY Description
+%	BOOL = CHECKDATACONSISTENCY(FNAMEMOD1, FNAMEMOD2) Long description
+%
 
-		fname_hdeeg = [{fname_hdeeg.name}];
-		fname_pcs = [{fname_pcs.name}];
+		fnameMod1 = {fnameMod1.name};
+		fnameMod2 = {fnameMod2.name};
 
-		[p,hdeeg,e] = cellfun(@fileparts,fname_hdeeg,'uni',false);
-		[p,pcs,e] 	= cellfun(@fileparts,fname_pcs,'uni',false);
+		[~,mod1,~] = cellfun(@fileparts,fnameMod1,'uni',false);
+		[~,mod2,~] = cellfun(@fileparts,fnameMod2,'uni',false);
 
-		nEEGFiles = numel(hdeeg);
-		nPCSFiles = numel(pcs);
+		nMod1Files = numel(mod1);
+		nMod2Files = numel(mod2);
 
-		nMatchingFiles = sum(ismember(hdeeg,pcs));
+		nMatchingFiles = sum(ismember(mod1,mod2));
 
-		if nEEGFiles == nPCSFiles || nMatchingFiles == nEEGFiles
+		if nMod1Files == nMod2Files || nMatchingFiles == nMod1Files
 				bool = true;
 		else
 				bool = false;
@@ -453,37 +451,130 @@ function bool = checkDataConsistency(fname_hdeeg, fname_pcs)
 end
 
 
-function locs = findTENSArtefact(data)
+function newloc = findTENSArtefact(data, fs)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
-%
-%
+	  global globDebug	
+		if globDebug
+				figure, plot(data.*1e-2), hold on;
+		end
+		data = abs(data);
 
-		data_bp = process_bandpass('Compute', data, 793, 90, 110, [],1);
-		data_bp(:,:,2) = process_bandpass('Compute', data, 793, 190, 210, [],1);
-		data_bp(:,:,3) = process_bandpass('Compute', data, 793, 290, 310, [],1);
-		data_bp = process_bandpass('Compute', ...
-				mean(abs(data_bp(:,:,:)),3), 793, .001, 1, [],1);
+		dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
+		dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
+        
+		if fs > 700			
+            
+			dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+			
+		end
+		dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-		thr = 3*std(data_bp);
-		[pks,locs] = findpeaks(data_bp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*793);
-		if(length(locs)>2)
-				[val,idx] = sort(pks,'descend');
-				thr = val(3)+2*eps;
+    pctg = 80;
+		thr = prctile(dataBp,pctg);
+		while(thr<0)
+				pctg = pctg +1;
+				thr = prctile(dataBp,pctg);        
+		end
+        
+		[pks,pksLocs] = findpeaks(dataBp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
+		if(length(pksLocs)>2)
+				% in general we should have only two tens 
+				% but we might end up with some weird artefacts
+
+
+				[val,I] = sort(pks,'descend');
+				pks 		= val(1:2);
+				pksLocs	= pksLocs(I);
+				pksLocs	= pksLocs(1:2);
+
 		end
 
-		[locs] = find(abs(diff((data_bp>thr))));
-		if(length(locs)==3)
-				start_end = find(diff(locs)>5*793);
-				if (start_end == 1)
-						locs = [1 locs];
-				else
-						locs = locs(1:2);
+		[locs] = find(abs(diff((dataBp>thr))));
+		dataBpDer = -savitzkyGolayFilt(dataBp,4,1,11);
+		locsDer = dataBpDer(locs);
+		
+		if(locsDer(1)<0),locs(1)=[];end
+		if(locsDer(end)>0),locs(end)=[];end
+
+		if globDebug
+				plot(dataBp,'r');
+				plot(locs,dataBp(locs),'ko');
+		end
+
+	 
+		locs = reshape(locs,2,numel(locs)/2);
+		
+		duration = diff(locs);
+		
+		locs = locs(:,duration>0.8*fs);
+        
+		newloc = [];
+		
+ 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+				for i=1:numel(pks)
+						loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
+						startLoc = find(loc-pksLocs(i)<0,1,'first');
+						endLoc = find(loc-pksLocs(i)>0,1,'last');
+						loc = [loc(startLoc) loc(endLoc)];
+						if ~isempty( loc )
+							newloc = [newloc loc];
+						end
 				end
-		end
+ 		else
+ 				newloc = locs;
+ 		end
+          
+		newloc = sort(newloc,'ascend');
 
+		if globDebug
+				plot(newloc,dataBp(newloc),'kx','MarkerSize',5);
+		end
 
 
 end
 
+function tau = manualTENS(D,method)
+%MANUALTENS Description
+%	TAU = MANUALTENS(D,locs) Long description
+%
+	warnMessage = sprintf('You should pick only %d point(s)',method);
+	warndlg(warnMessage);
+	f1 = figure;
+	imf = ceemdan(D,0.0002,20,100,1);
+	plot(bsxfun(@plus,imf,max(imf(:))*(1:(size(imf,1)))')')
+	addCrossair(f1);
 
+	waitfor(f1)
+
+	tau = evalin('base','cursorValue');
+	
+
+end
+
+
+function mask = ismemberWildcards(stringsIn, patterns)
+%ISMEMBERWILDCARDS Description
+%	MASK = ISMEMBERWILDCARDS(STRINGSIN, PATTERNS) Long description
+%
+	
+	nStrings = numel(stringsIn);
+	nPatterns= numel(patterns);
+
+	mask = cellfun(@(x) regexp(x,patterns),stringsIn,'Uni',false);
+	mask = [mask{:}];
+	mask = reshape(mask,[nPatterns,nStrings]);
+	mask(cellfun(@isempty,mask)) = {0};
+
+	mask = cell2mat(mask);
+
+	mask = sum(mask) >= 1;
+end
+
+function data = cutInitialSamplesData(data,offset,fs)
+%CUTINITIALSAMPLESDATA Description
+%	DATA = CUTINITIALSAMPLESDATA(DATA,OFFSET,FS) Long description
+%
+	data = data(:,(offset*fs)+1:end);
+
+end

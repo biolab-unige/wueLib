@@ -60,7 +60,6 @@ function status = wlb_EMGPCSSynch(varargin)
 				trialIdx = str2double(cell2mat(regexp(trialIdx,'\d+','match')));
 				eveFname = eveFileNames(~cellfun(@isempty,regexp({eveFileNames.name},drugCondition)));
 				eveFname = fullfile(pathEvents,eveFname.name);
-%				tensFname= regexprep(eveFname,'events','tens');
 
 				fprintf('Synch:\t%s\n\t%s\n\t%s\n',pcsFname,emgFname,eveFname);
 
@@ -81,7 +80,8 @@ function status = wlb_EMGPCSSynch(varargin)
 
 						% pick the first channel
 						pcsChIdx = p.Results.pcsRefChannel;
-						emgChIdx = find(ismemberWildcards(lower(emgHdr.labels),{'artefa.t_pulse','tens_pulse'})==1 );
+						emgChIdx = find(ismemberWildcards(lower(emgHdr.labels),...
+								{'artefa.t_pulse','tens_pulse'})==1 );
 
 						if isempty(pcsChIdx ) || isempty(emgChIdx)
 								error('Invalid reference channel');
