@@ -477,7 +477,7 @@ function newloc = findTENSArtefact(data, fs)
         
 		newloc = [];
 		
- 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+% 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
 				for i=1:numel(pks)
 						loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
 						startLoc = find(loc-pksLocs(i)<0,1,'first');
@@ -487,9 +487,9 @@ function newloc = findTENSArtefact(data, fs)
 							newloc = [newloc loc];
 						end
 				end
- 		else
- 				newloc = locs;
- 		end
+% 		else
+% 				newloc = locs;
+% 		end
           
 		newloc = sort(newloc,'ascend');
 

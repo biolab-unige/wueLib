@@ -17,7 +17,7 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 		p.addOptional('pathEvents','',@ischar)
 		p.addOptional('fnameFilters',{''},@iscell);
 
-		p.addOptional('pcsRefChannel',2,@isnumeric);
+		p.addOptional('pcsRefChannel',1,@isnumeric);
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('emgCuttingTime',0,@isnumeric);
 		p.addOptional('eegCuttingTime',0,@isnumeric);
@@ -34,7 +34,7 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 		% get filenames within each path
 		pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
 		emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
-		eegFileNames = dir(fullfile(pathHdeeg,'*.eeg'));
+		eegFileNames = dir(fullfile(pathHdeeg,'*eeg.eeg'));
 
 		eveFileNames = dir(fullfile(pathEvents,'*event*.csv'));
 
@@ -99,6 +99,8 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 								pcsHdr.SenseChannelConfig.TDSampleRate);
 						emgData = cutInitialSamplesData(emgData,p.Results.emgCuttingTime,emgHdr.freq);
 						eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
+                        
+                        
 
 						% define TENS channels
 						pcsChIdx = p.Results.pcsRefChannel;
@@ -114,50 +116,82 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						emgCh = emgData(emgChIdx,:);
 						eegCh = eegData(eegChIdx,:);
 						
+						% pick central window
+						pcsWnd = round(numel(pcsCh)/2)-[1/2*pcsHdr.SenseChannelConfig.TDSampleRate:...
+								1/2*pcsHdr.SenseChannelConfig.TDSampleRate];
+						emgWnd = round(numel(emgCh)/2)-[1/2*emgHdr.freq:1/2*emgHdr.freq];
+						eegWnd = round(numel(eegCh)/2)-[1/2*eegHdr.SamplingInterval:1/2*eegHdr.SamplingInterval];
+						
+						pcsStd = std(pcsCh(pcsWnd));
+						emgStd = std(emgCh(emgWnd));
+						eegStd = std(eegCh(eegWnd));
+						
+						% sometimes EMG or PCS data have been cutted at
+						% the begginig or at the end, we then pad with
+						% random samples around the mean
+						padValsPcs = pcsStd.*randn(1,4*pcsHdr.SenseChannelConfig.TDSampleRate);
+						padValsEmg = emgStd.*randn(1,4*emgHdr.freq);
+						padValsEeg = eegStd.*randn(1,4*eegHdr.SamplingInterval);
+						
+						pcsCh = [padValsPcs, pcsCh, padValsPcs];
+						emgCh = [padValsEmg, emgCh, padValsEmg];
+						eegCh = [padValsEeg, eegCh, padValsEeg];
+			
 						% find time windows containing TENS
-						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate);
-						eegLocs = findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval);
-						emgLocs = findTENSArtefact(emgData(emgChIdx,:),emgHdr.freq);
+						pcsLocs = findTENSArtefact(pcsCh,pcsHdr.SenseChannelConfig.TDSampleRate);
+						eegLocs = findTENSArtefact(eegCh,eegHdr.SamplingInterval);
+						emgLocs = findTENSArtefact(emgCh,emgHdr.freq);
 						
 						method = min([length(eegLocs)/2,length(pcsLocs)/2,length(emgLocs)/2]);
 						
 						% actually compute t0 for all channels
 						dataCell = [{eegCh},{pcsCh},{emgCh}];
 						
-						t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs,emgLocs},...
-									{eegHdr.Fs,pcsHdr.SenseChannelConfig.TDSampleRate,emgHdr.freq},...
-									{method, method,method},'uni',false);
+						if p.Results.automaticDetection	
+								t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs,emgLocs},...
+										{eegHdr.Fs,pcsHdr.SenseChannelConfig.TDSampleRate,emgHdr.freq},...
+										{method, method,method},'uni',false);
+						else
+								t0 = cellfun(@manualTENS,dataCell,{method,method,method},'uni',false);
+						end
 
-						t0 = reshape([t0{:}],2,3)';
-							 
+										
 						if( method == 2 )
+								t0 = reshape([t0{:}],2,3)';
+
 								% estimate the correct fs for PCS
 								pcsFs = (t0(2,2)-t0(2,1))* eegHdr.Fs /(t0(1,2)-t0(1,1));
 						else
+								t0 = [t0{:}]';
 								t0(:,2) = [length(eegCh) length(pcsCh) length(emgCh)];
 								pcsFs = 793.65;
 						end
+						
+						% remove the padded samples
+						offsets = [eegHdr.SamplingInterval*4; pcsHdr.SenseChannelConfig.TDSampleRate*4;...
+												emgHdr.freq*4 ];
+						t0 = t0 - repmat(offsets,[1 2]);
 					
 						
 						% downsample pcs data to integer sampling frequency and eeg accordingly
-						fs 						= 400;
-						[pcsData,~,~] = ResampleCascade(pcsData,fs,pcsFs);
-						eegData 			= resample(eegData',fs,eegHdr.Fs)';
-						emgData 			= resample(emgData',fs,emgHdr.freq)';
+						fs 				= 400;
+						[pcsData,~,~]   = ResampleCascade(pcsData,fs,pcsFs);
+						eegData 		= resample(eegData',fs,eegHdr.Fs)';
+						emgData 		= resample(emgData',fs,emgHdr.freq)';
 						
 						% each t0 row represent eeg,pcs,emg data before
 						% we have to recompute the exact point in time after
 						% resampling
 						t0(1,:) = (round(t0(1,:)/eegHdr.Fs*pcsFs));
 						t0(3,:) = (round(t0(3,:)/emgHdr.freq*pcsFs));
-						t0 			= round(t0/pcsFs*fs);
+						t0 		= round(t0/pcsFs*fs);
 									 
 						% also compute the sample indices for each events with new sampling freq
 						for evIdx = 1:numel(eventsInfo)
 							
 							if (eventsInfo(evIdx).times >=0)
 								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ min(t0(:,1));						
-							  eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
+                                eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
 
 							else
 								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ max(t0(:,1));
@@ -177,13 +211,13 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						
 						% the we determine the minimun data length
 						finalSize  	= min([size(eegDataOut,2),...
-																size(pcsDataOut,2),....
-																size(emgDataOut,2)]);
+                                            size(pcsDataOut,2),....
+											size(emgDataOut,2)]);
 						% cut accordingly each modality and pack everything
 						% in a single data matrix
-						dataOut 	 	= [eegDataOut(:,1:finalSize); ...
-														pcsDataOut(:,1:finalSize);...
-														emgDataOut(:,1:finalSize)];
+						dataOut 	= [eegDataOut(:,1:finalSize); ...
+										emgDataOut(:,1:finalSize);
+                                        pcsDataOut(:,1:finalSize)];
 						
 						pcsChannels	= size(pcsData,1);
 						emgChannels = size(emgData,1);
@@ -205,21 +239,22 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						outHdr.chanunit = [eegHdr.chanunit, emgHdr.chanunit, pcsHdr.chanunit];
 
 						if globDebug	
-								figure(1), clf
+								figure, clf
 								subplot(311)
-								plot(eegData(eegChIdx,-100:100 + t0(1))),
-								hold on, plot(pcsData(pcsChIdx,-100:100 + t0(2)).*10,'r');
-								plot(emgData(emgChIdx,-100:100 + t0(3)),'k');
+								plot(eegData(eegChIdx,(-100:100) + t0(1))),
+								hold on, plot(pcsData(pcsChIdx,(-100:100) + t0(2)).*10,'r');
+								plot(emgData(emgChIdx,(-100:100) + t0(3)),'k');
 
 								if(method == 2)
 										subplot(312)
-										plot(eegData(eegChIdx,-100:100 + t0(4))),
-										hold on, plot(pcsData(pcsChIdx,-100:100 + t0(5)).*10,'r');
-										plot(emgData(emgChIdx,-100:100 + t0(6)),'k');
+										plot(eegData(eegChIdx,(-100:100) + t0(4))),
+										hold on, plot(pcsData(pcsChIdx,(100:100) + t0(5)).*10,'r');
+										plot(emgData(emgChIdx,(-100:100) + t0(6)),'k');
 								end
 								subplot(313),
 								plot(dataOut([eegChIdx end-1:end],:)');
 								drawnow
+                                title('Synched data');
 						end
 						
 %						if(eventTimeoffset)
@@ -243,7 +278,7 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 %						end
 						
 						% update header info
-						outHdr.label 		= [eegHdr.label; emgHdr.labels'; pcsHdr.labels'];
+						outHdr.label 		= [eegHdr.label;  emgHdr.labels';pcsHdr.labels'];
 						outHdr.nChans		= eegHdr.NumberOfChannels + pcsChannels + emgChannels;
 						outHdr.NumberOfChannels = outHdr.nChans;
 						outHdr.chantype	=eegHdr.chantype;
@@ -346,6 +381,7 @@ function tau = findTInit(D,locs,~,chunks)
 		tau(isnan(tau)) = [];
 		figure,
 		plot(D) , hold on, plot(tau,D(tau),'rx');
+        title('t0 points');
 
 end
 
@@ -457,6 +493,7 @@ function newloc = findTENSArtefact(data, fs)
 	  global globDebug	
 		if globDebug
 				figure, plot(data.*1e-2), hold on;
+                title('findTENSArtefact');
 		end
 		data = abs(data);
 
@@ -470,7 +507,7 @@ function newloc = findTENSArtefact(data, fs)
 		end
 		dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-    pctg = 80;
+        pctg = 80;
 		thr = prctile(dataBp,pctg);
 		while(thr<0)
 				pctg = pctg +1;
@@ -511,7 +548,7 @@ function newloc = findTENSArtefact(data, fs)
         
 		newloc = [];
 		
- 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+%  		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
 				for i=1:numel(pks)
 						loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
 						startLoc = find(loc-pksLocs(i)<0,1,'first');
@@ -520,11 +557,11 @@ function newloc = findTENSArtefact(data, fs)
 						if ~isempty( loc )
 							newloc = [newloc loc];
 						end
-				end
- 		else
- 				newloc = locs;
- 		end
-          
+ 				end
+%  		else
+%  				newloc = locs;
+%  		end
+%           
 		newloc = sort(newloc,'ascend');
 
 		if globDebug
