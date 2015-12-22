@@ -17,9 +17,10 @@ global globDebug;
 		p.addParamValue('outdir','',@ischar);
 		p.addParamValue('pcsCuttingTime',0,@isnumeric);
 		p.addParamValue('emgCuttingTime',0,@isnumeric);
+		p.addParamValue('eegCuttingTime',0,@isnumeric);
 		p.addParamValue('automaticDetection',true,@islogical);
 		p.addParamValue('debug',false,@islogical);
-
+		p.addParamValue('pcsRefChannel',2,@isnumeric);
 
 		p.parse(varargin{:});
 		recordingModalities = cell(1,3);
@@ -43,14 +44,19 @@ global globDebug;
 
 		if ~isempty(p.Results.emgCuttingTime)
 				emgCuttingTime = p.Results.emgCuttingTime;
-		end
+        end
 
-		globDebug = p.Results.debug;
+        if ~isempty(p.Results.eegCuttingTime)
+                eegCuttingTime = p.Results.eegCuttingTime;
+        end
+        
+        globDebug = p.Results.debug;
 
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fNameFilters;
 		automaticDetection = p.Results.automaticDetection;
-
+        pcsRefChannel = p.Results.pcsRefChannel;
+        
 		if(isempty(p.Results.outdir))
 				% search for a non-empty directory between recordingModalities
 				fieldNames = regexp(fieldnames(p.Results),'^.*path.*','match');
@@ -84,7 +90,9 @@ global globDebug;
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime,...
 												'automaticDetection',automaticDetection);
 				case 'eeg_pcs'
-						status = wlb_EEGPCSSynch(pathHdeeg,pathPcs);
+						status = wlb_EEGPCSSynch(pathHdeeg,pathPcs,outdir,pathEvents,...
+												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'eegCuttingTime',eegCuttingTime,...
+												'automaticDetection',automaticDetection,'pcsRefChannel',pcsRefChannel);
 				otherwise
 						error('Unsupported modality');
 		end

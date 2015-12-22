@@ -24,7 +24,7 @@ function wlb_convertActivaPCtoEEG(folder,logFid)
 				fs(file)						= hdr.SenseChannelConfig.TDSampleRate;
 				labels(file)				= {hdr.labels};
 				dataOut(file)				= {data'};
-
+                figure(1),clf,plot(data')
 		end
 
 		realFs = unique(fs);

@@ -1,8 +1,8 @@
-function status = wlb_convertActivaPCtoEEG_subejcts(fname)
+function status = wlb_convertActivaPCtoEEG_subjects(fname)
 %WLB_CONVERTACTIVAPCTOEEG_SUBEJCTS Description
 %	STATUS = WLB_CONVERTACTIVAPCTOEEG_SUBEJCTS(FNAME) Long description
 %
-	logFid	= fopen('/media/gabri/My Passport/DBS/logFile.log','w');
+	logFid	= fopen('C:\Users\andrea83\Desktop\logFile.log','w');
 	[parent, ~] = fileparts(fname);
 
 	% we are in the data dir containing all the subjects
