@@ -17,11 +17,12 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 		p.addOptional('pathEvents','',@ischar)
 		p.addOptional('fnameFilters',{''},@iscell);
 
-		p.addOptional('pcsRefChannel',1,@isnumeric);
-		p.addOptional('pcsCuttingTime',0,@isnumeric);
-		p.addOptional('emgCuttingTime',0,@isnumeric);
-		p.addOptional('eegCuttingTime',0,@isnumeric);
-		p.addOptional('automaticDetection',true,@islogical);
+    p.addOptional('pcsRefChannel',1,@isnumeric);
+    p.addOptional('pcsCuttingTime',[0 0],@(x) isnumeric(x) & numel(x)==2 );
+    p.addOptional('eegCuttingTime',[0 0],@(x) isnumeric(x) & numel(x)==2);
+    p.addOptional('emgCuttingTime',[0 0],@(x) isnumeric(x) & numel(x)==2);
+    p.addOptional('automaticDetection',true,@islogical);
+    p.addOptional('find_tens_pctg',80,@isnumeric);
 
 		p.parse(varargin{:});
 
@@ -30,7 +31,7 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 		pathHdeeg = p.Results.pathHdeeg;
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fnameFilters;
-
+        pctg=p.Results.find_tens_pctg;
 		% get filenames within each path
 		pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
 		emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
@@ -95,10 +96,13 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						[eegHdr, eegData] = wlb_readBrainvision( eegFname );
 					 
 						% cut data if needed
-						pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,...
-								pcsHdr.SenseChannelConfig.TDSampleRate);
-						emgData = cutInitialSamplesData(emgData,p.Results.emgCuttingTime,emgHdr.freq);
-						eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
+        pcsData = pcsData(:,(p.Results.pcsCuttingTime(1)*...
+            pcsHdr.SenseChannelConfig.TDSampleRate)+1:end-(p.Results.pcsCuttingTime(2)*...
+            pcsHdr.SenseChannelConfig.TDSampleRate));
+        emgData = emgData(:,(p.Results.emgCuttingTime(1)*emgHdr.freq)+1:end-...
+            (p.Results.emgCuttingTime(2)*emgHdr.freq));
+						
+        eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
                         
                         
 
@@ -138,9 +142,9 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						eegCh = [padValsEeg, eegCh, padValsEeg];
 			
 						% find time windows containing TENS
-						pcsLocs = findTENSArtefact(pcsCh,pcsHdr.SenseChannelConfig.TDSampleRate);
-						eegLocs = findTENSArtefact(eegCh,eegHdr.SamplingInterval);
-						emgLocs = findTENSArtefact(emgCh,emgHdr.freq);
+						pcsLocs = findTENSArtefact(pcsCh,pcsHdr.SenseChannelConfig.TDSampleRate,pctg);
+						eegLocs = findTENSArtefact(eegCh,eegHdr.SamplingInterval,pctg);
+						emgLocs = findTENSArtefact(emgCh,emgHdr.freq,pctg);
 						
 						method = min([length(eegLocs)/2,length(pcsLocs)/2,length(emgLocs)/2]);
 						
@@ -487,7 +491,7 @@ function bool = checkDataConsistency(fnameMod1, fnameMod2)
 end
 
 
-function newloc = findTENSArtefact(data, fs)
+function newloc = findTENSArtefact(data, fs,pctg)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
 	  global globDebug	
@@ -507,7 +511,6 @@ function newloc = findTENSArtefact(data, fs)
 		end
 		dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-        pctg = 80;
 		thr = prctile(dataBp,pctg);
 		while(thr<0)
 				pctg = pctg +1;
@@ -612,6 +615,6 @@ function data = cutInitialSamplesData(data,offset,fs)
 %CUTINITIALSAMPLESDATA Description
 %	DATA = CUTINITIALSAMPLESDATA(DATA,OFFSET,FS) Long description
 %
-	data = data(:,(offset*fs)+1:end);
+	data = data(:,(offset(1)*fs)+1:end-(offset(2)*fs));
 
 end

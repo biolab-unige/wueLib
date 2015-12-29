@@ -3,8 +3,8 @@
 %
 [csvMatchFile,csvMatchFilePath] = uigetfile('/opt/data/*.csv','Select the csv matching file');
 
-[subjectNames, experiments, drug, trial, fileNamesPcs,fileNamesEeg] = textread(fullfile(csvMatchFilePath,...
-    csvMatchFile),'%s %s %s %d %s %s','delimiter',',','headerlines',1);
+[subjectNames, experiments, drug, trial, fileNamesPcs,fileNamesEmg,fileNamesEeg] = textread(fullfile(csvMatchFilePath,...
+    csvMatchFile),'%s %s %s %d %s %s %s','delimiter',',','headerlines',1);
 
 fid = fopen(fullfile(csvMatchFilePath,'conversion.log'),'w');
 % for each pcs data
@@ -56,19 +56,21 @@ for file = 1:numel(fileNamesPcs)
     end
     
     
-%     newFileNameEmg= strjoin([subjectNames(file),experiments(file),...
-%             drug(file),{strcat('trial',num2str(trial(file)))},'emg'],'_');
-%         
-%     oldFileName_ = fullfile(lower(subjectNames{file}),fileNamesEmg{file});
-%     newFileNameEmg = fullfile(lower(subjectNames{file}),newFileNameEmg);
-%     
-%     oldFileName = strcat(oldFileName_,'.txt');
-%     newFileName = strcat(newFileNameEmg,'.txt');
-%     [s, mesg] = movefile(fullfile(csvMatchFilePath,oldFileName),...
-%         fullfile(csvMatchFilePath,newFileName));
-%     if(~s)
-%         fprintf(fid,mesg);
-%     end
+    newFileNameEmg= strjoin([subjectNames(file),experiments(file),...
+            drug(file),{strcat('trial',num2str(trial(file)))},'emg'],'_');
+        
+    oldFileName_ = fullfile(lower(subjectNames{file}),fileNamesEmg{file});
+    newFileNameEmg = fullfile(lower(subjectNames{file}),newFileNameEmg);
+    
+    oldFileName = strcat(oldFileName_,'.txt');
+    newFileName = strcat(newFileNameEmg,'.txt');
+    [s, mesg] = movefile(fullfile(csvMatchFilePath,oldFileName),...
+        fullfile(csvMatchFilePath,newFileName));
+    if(~s)
+        fprintf(fid,mesg);
+    else
+        disp('found\n')
+    end
     
 end
 fclose(fid);

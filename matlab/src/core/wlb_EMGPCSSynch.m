@@ -13,10 +13,11 @@ p.addRequired('outdir',@ischar);
 p.addOptional('pathEvents','',@ischar)
 p.addOptional('fnameFilters',{''},@iscell);
 
-p.addOptional('pcsRefChannel',2,@isnumeric);
-p.addOptional('pcsCuttingTime',0,@isnumeric);
-p.addOptional('emgCuttingTime',0,@isnumeric);
+p.addOptional('pcsRefChannel',1,@isnumeric);
+p.addOptional('pcsCuttingTime',[0 0],@(x) isnumeric(x) & numel(x)==2 );
+p.addOptional('emgCuttingTime',[0 0],@(x) isnumeric(x) & numel(x)==2);
 p.addOptional('automaticDetection',true,@islogical);
+p.addOptional('find_tens_pctg',80,@isnumeric);
 
 p.parse(varargin{:});
 
@@ -24,7 +25,7 @@ pathPcs = p.Results.pathPcs;
 pathEmg = p.Results.pathEmg;
 pathEvents = p.Results.pathEvents;
 fnameFilters = p.Results.fnameFilters;
-
+pctg=p.Results.find_tens_pctg;
 % get filenames within each path
 pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
 emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
@@ -74,9 +75,11 @@ for fileIdx = 1 : numel(pcsFileNames)
         [emgHdr, emgData] = wlb_readEMG_wue( emgFname );
         
         % cut data if needed
-        pcsData = pcsData(:,(p.Results.pcsCuttingTime*...
-            pcsHdr.SenseChannelConfig.TDSampleRate)+1:end);
-        emgData = emgData(:,(p.Results.emgCuttingTime*emgHdr.freq)+1:end);
+        pcsData = pcsData(:,(p.Results.pcsCuttingTime(1)*...
+            pcsHdr.SenseChannelConfig.TDSampleRate)+1:end-(p.Results.pcsCuttingTime(2)*...
+            pcsHdr.SenseChannelConfig.TDSampleRate));
+        emgData = emgData(:,(p.Results.emgCuttingTime(1)*emgHdr.freq)+1:end-...
+            (p.Results.emgCuttingTime(2)*emgHdr.freq));
         
         % pick the first channel
         pcsChIdx = p.Results.pcsRefChannel;
@@ -101,8 +104,8 @@ for fileIdx = 1 : numel(pcsFileNames)
         
         
         % search for the TENS artefact
-        pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate);
-        emgLocs = findTENSArtefact(emgData(emgChIdx,:),emgHdr.freq);
+        pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate,pctg);
+        emgLocs = findTENSArtefact(emgData(emgChIdx,:),emgHdr.freq,pctg);
         
         method = min([length(pcsLocs)/2,length(emgLocs)/2]);
         pcsLocs = pcsLocs(1:method*2);
@@ -417,7 +420,7 @@ end
 end
 
 
-function newloc = findTENSArtefact(data, fs)
+function newloc = findTENSArtefact(data, fs,pctg)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
 global globDebug
@@ -426,19 +429,18 @@ if globDebug
 end
 data = abs(data);
 
-data_bp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
+dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
 if fs < 700
-    data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
+    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
     
 end
 if fs > 700
-    data_bp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
-    data_bp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
+    dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
     
 end
 dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-pctg = 80;
 thr = prctile(dataBp,pctg);
 while(thr<0)
     pctg = pctg +1;
@@ -510,7 +512,7 @@ function tau = manualTENS(D,method)
 warnMessage = sprintf('You should pick only %d point(s)',method);
 warndlg(warnMessage);
 f1 = figure;
-imf = ceemdan(D,0.0002,20,100,1);
+imf = emd(D,'MAXITERATIONS',100,'MAXMODES',4);
 plot(bsxfun(@plus,imf,max(imf(:))*(1:(size(imf,1)))')')
 addCrossair(f1);
 
