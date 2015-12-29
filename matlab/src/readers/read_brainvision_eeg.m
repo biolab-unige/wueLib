@@ -27,7 +27,8 @@ function [dat] = read_brainvision_eeg(filename, hdr, begsample, endsample, chani
 %    You should have received a copy of the GNU General Public License
 %    along with FieldTrip. If not, see <http://www.gnu.org/licenses/>.
 %
-% $Id$
+
+% $Id: read_brainvision_eeg.m 9187 2014-02-05 16:10:12Z jimher $
 
 if nargin<5
   % read all channels
@@ -175,4 +176,5 @@ if ~isempty(chanindx)
   % already done in the code above, for the other formats the selection
   % still has to be done here
   dat = dat(chanindx,:);
+end
 end

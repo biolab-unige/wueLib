@@ -1,12 +1,14 @@
-function wlb_convertActivaPCtoEEG(folder,logFid)
+function wlb_convertActivaPCtoEEG(folder,logFid,pattern)
 %WLB_CONVERTACTIVAPCTOEEG Append to a single BrainAmp file all the PC+s data
 %	WLB_CONVERTACTIVAPCTOEEG(FOLDER) 
 %
 
 
-		fprintf(logFid,'Reading in %s\n',folder);
+%		fprintf(logFid,'Reading in %s\n',folder);
 		fprintf('Reading in %s\n',folder);
 		fnames = dir(fullfile(folder,'*xml'));
+
+		fnames = filterFnames(fnames,pattern);
 		
 		dataOut = cell(numel(fnames),1);
 		labels  = cell(numel(fnames),1);
@@ -15,7 +17,7 @@ function wlb_convertActivaPCtoEEG(folder,logFid)
 				try
 					[hdr, data]	= wlb_readActivaPC(fullfile(folder,fnames(file).name));
 				catch ME
-						fprintf(logFid,ME.message);
+%						fprintf(logFid,ME.message);
 						continue
 				end
 
@@ -34,9 +36,12 @@ function wlb_convertActivaPCtoEEG(folder,logFid)
 
 		clear file hdr data;
 
-		data = [dataOut{:}]';
 
-		out_hdr.label = [labels{:}];
+%		data = [dataOut{:}]';
+		data = cat(1,dataOut{:})';		
+
+		out_hdr.label = unique([labels{:}]);
+		out_hdr.label = out_hdr.label(1:2);
 		out_hdr.Fs 	  = realFs;
 
 
@@ -63,18 +68,36 @@ function wlb_convertActivaPCtoEEG(folder,logFid)
 		out_hdr.resolution      = ones(size(out_hdr.label));      
 
 		% write data
-		stripPaths = regexp(folder,'/orig/','split');
+		filename = fnames(1).name;
+%		stripPaths = regexp(filename,'_trial\d+_','split');
 
-		filename = regexprep(stripPaths{2},'/','_');
+		filename = regexprep(filename,'_trial\d+','');
 
+		filename = filename(1:end-4);
 
-		
 		out_hdr.DataFile = strcat(filename,'.eeg');
 		out_hdr.MarkerFile = '';
-		fprintf(logFid,'Writing to %s\n',filename);
+%		fprintf(logFid,'Writing to %s\n',filename);
+		fprintf('Writing to %s\n',filename);
 						
 		write_brainvision_eeg(folder, out_hdr, data);
 		write_brainvision_vhdr(folder, out_hdr);
 
-
 end
+
+function fnames = filterFnames(fnames,pattern)
+%FILTERFNAMES Description
+%	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
+%
+		tmp = {fnames.name};
+		mask= zeros(numel(tmp),numel(pattern));
+
+		for el = 1:numel(tmp)
+			mask(el,:) = ~cellfun(@isempty,regexp(tmp(el),pattern));
+		end
+
+		mask = logical(prod(mask,2));
+
+		fnames = fnames(mask);
+end
+
