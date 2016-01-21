@@ -1,10 +1,10 @@
 % USAGE:
 %
 %
-[csvMatchFile,csvMatchFilePath] = uigetfile('/opt/data/*.csv','Select the csv matching file');
+[csvMatchFile,csvMatchFilePath] = uigetfile(fullfile(pwd, '*.csv'),'Select the csv matching file');
 
-[subjectNames, experiments, drug, trial, fileNamesPcs,fileNamesEmg,fileNamesEeg] = textread(fullfile(csvMatchFilePath,...
-    csvMatchFile),'%s %s %s %d %s %s %s','delimiter',',','headerlines',1);
+[subjectNames, experiments, drug, trial, fileNamesPcs,fileNamesEeg,fileNamesEmg] = textread(fullfile(csvMatchFilePath,...
+    csvMatchFile),'%s %s %s %d %s %s %s','delimiter',';','headerlines',1);
 
 fid = fopen(fullfile(csvMatchFilePath,'conversion.log'),'w');
 % for each pcs data
@@ -55,7 +55,7 @@ for file = 1:numel(fileNamesPcs)
     end
     end
     
-    
+    if(not(isempty(fileNamesEmg{file})))
     newFileNameEmg= strjoin([subjectNames(file),experiments(file),...
             drug(file),{strcat('trial',num2str(trial(file)))},'emg'],'_');
         
@@ -71,6 +71,6 @@ for file = 1:numel(fileNamesPcs)
     else
         disp('found\n')
     end
-    
+    end
 end
 fclose(fid);

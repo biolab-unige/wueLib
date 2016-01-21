@@ -38,7 +38,7 @@ else
   nsmp  = size(dat,2);
 end
 
-if hdr.nChans~=nchan
+if hdr.NumberOfChannels~=nchan
   error('number of channels in in header does not match with the data');
 end
 
