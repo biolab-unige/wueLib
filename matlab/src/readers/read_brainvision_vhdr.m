@@ -46,6 +46,19 @@ if(isempty(info))
 end
 
 hdr.MarkerFile       = read_asa(filename, 'MarkerFile=', '%s');
+if(not(isempty(hdr.MarkerFile)))
+markerfile = fullfile(p, hdr.MarkerFile);
+info = dir(markerfile);
+if(isempty(info))
+    markerfile = fullfile(p, [f '.vmrk']);
+    info = dir(markerfile);
+    if isempty(info)
+        error('cannot determine the location of the data file %s', hdr.MarkerFile);
+    else
+        hdr.MarkerFile = [f '.vmrk'];
+    end
+end
+end
 hdr.DataFormat       = read_asa(filename, 'DataFormat=', '%s');
 hdr.DataOrientation  = read_asa(filename, 'DataOrientation=', '%s');
 hdr.BinaryFormat     = read_asa(filename, 'BinaryFormat=', '%s');

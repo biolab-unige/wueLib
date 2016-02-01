@@ -20,14 +20,15 @@ function status = wlb_EEGPCSSynch(varargin)
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('eegCuttingTime',0,@isnumeric);
 		p.addOptional('automaticDetection',true,@islogical);
-
-		p.parse(varargin{:});
+        p.addOptional('find_tens_pctg',80,@isnumeric);
+		
+        p.parse(varargin{:});
 
 		pathPcs = p.Results.pathPcs;
 		pathHdeeg = p.Results.pathHdeeg;
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fnameFilters;
-
+        pctg=p.Results.find_tens_pctg;
 		% get filenames within each path
 		pcsFileNames = dir(fullfile(pathPcs,'*pcs*.xml'));
 		eegFileNames = dir(fullfile(pathHdeeg,'*.eeg'));
@@ -84,8 +85,9 @@ function status = wlb_EEGPCSSynch(varargin)
 						[pcsHdr, pcsData] = wlb_readActivaPC( pcsFname );
 						[eegHdr, eegData,vmrk_event] = wlb_readBrainvision( eegFname );
 						% cut data if needed
-						pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,...
-								pcsHdr.SenseChannelConfig.TDSampleRate);
+% 						pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,...
+% 								pcsHdr.SenseChannelConfig.TDSampleRate);
+                        pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,pcsHdr.SenseChannelConfig.TDSampleRate);
 						eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
 
 						% define TENS channels
@@ -101,26 +103,35 @@ function status = wlb_EEGPCSSynch(varargin)
 						eegCh = eegData(eegChIdx,:);
 						
 						% find time windows containing TENS
-						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate);
-						eegLocs = findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval);
+						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate,pctg);
+						eegLocs = findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval,pctg);
 						
 						method = min([length(eegLocs)/2,length(pcsLocs)/2]);
 						
 						% actually compute t0 for all channels
 						dataCell = [{eegCh},{pcsCh}];
-						
-						t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs},...
+
+						if p.Results.automaticDetection	                        
+                            t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs},...
 									{eegHdr.Fs,pcsHdr.SenseChannelConfig.TDSampleRate},...
 									{method, method},'uni',false);
-
-						t0 = reshape([t0{:}],2,2)';
+                        else
+                            t0 = cellfun(@manualTENS,dataCell,{method,method},'uni',false);
+                        end
+                        
 							 
 						if( method == 2 )
-								% estimate the correct fs for PCS
+                                t0 = reshape([t0{:}],2,2)';
+                                % estimate the correct fs for PCS
 								pcsFs = (t0(2,2)-t0(2,1))* eegHdr.Fs /(t0(1,2)-t0(1,1));
 						else
-								t0(:,2) = [length(eegCh) length(pcsCh) length(emgCh)];
-								pcsFs = 793.65;
+                                t0 = [t0{:}]';
+                                t0(:,2) = [length(eegCh) length(pcsCh)];
+                                if pcsHdr.SenseChannelConfig.TDSampleRate > 422
+                                    pcsFs = 793.65;
+                                else
+                                    pcsFs = 422;
+                                end
 						end
 					
 						
@@ -224,7 +235,7 @@ function status = wlb_EEGPCSSynch(varargin)
 						outHdr.label 		= [eegHdr.label; pcsHdr.labels'];
 						outHdr.nChans		= eegHdr.NumberOfChannels + pcsChannels;
 						outHdr.NumberOfChannels = outHdr.nChans;
-						outHdr.chantype	=eegHdr.chantype;
+						outHdr.chantype	=   eegHdr.chantype;
 						outHdr.Fs				= fs;
 						
 						stnPosStruct = struct('type','stn',...
@@ -318,7 +329,7 @@ function tau = findTInit(D,locs,~,chunks)
 
 		end
 		tau(isnan(tau)) = [];
-		figure,
+		figure(get(gcf,'Number')+1),clf
 		plot(D) , hold on, plot(tau,D(tau),'rx');
 
 end
@@ -425,85 +436,87 @@ function bool = checkDataConsistency(fnameMod1, fnameMod2)
 end
 
 
-function newloc = findTENSArtefact(data, fs)
+function newloc = findTENSArtefact(data, fs,pctg)
 %FINDTENSARTEFACT data [1xN] time samples
 %	LOCS = FINDTENSARTEFACT(DATA) Long description
-	  global globDebug	
-		if globDebug
-				figure, plot(data.*1e-2), hold on;
-		end
-		data = abs(data);
+global globDebug
+if globDebug
+    figure(get(gcf,'Number')+1),clf, plot(data.*1e-2), hold on;
+end
+data = abs(data);
 
-		dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
-		dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
-        
-		if fs > 700			
-            
-			dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
-			
-		end
-		dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
+dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
+if fs < 700
+    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
+    
+end
+if fs > 700
+    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
+    dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
+    
+end
+dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
 
-    pctg = 80;
-		thr = prctile(dataBp,pctg);
-		while(thr<0)
-				pctg = pctg +1;
-				thr = prctile(dataBp,pctg);        
-		end
-        
-		[pks,pksLocs] = findpeaks(dataBp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
-		if(length(pksLocs)>2)
-				% in general we should have only two tens 
-				% but we might end up with some weird artefacts
+thr = prctile(dataBp,pctg);
+while(thr<0)
+    pctg = pctg +1;
+    thr = prctile(dataBp,pctg);
+end
+
+[pks,pksLocs] = findpeaks(dataBp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
+if(length(pksLocs)>2)
+    % in general we should have only two tens
+    % but we might end up with some weird artefacts
+    
+    
+    [val,I] = sort(pks,'descend');
+    pks 		= val(1:2);
+    pksLocs	= pksLocs(I);
+    pksLocs	= pksLocs(1:2);
+    
+end
+
+[locs] = find(abs(diff((dataBp>thr))));
+dataBpDer = -savitzkyGolayFilt(dataBp,4,1,11);
+locsDer = dataBpDer(locs);
+
+if(locsDer(1)<0),locs(1)=[];end
+if(locsDer(end)>0),locs(end)=[];end
+
+if globDebug
+    plot(dataBp,'r');
+    plot(locs,dataBp(locs),'ko');
+end
 
 
-				[val,I] = sort(pks,'descend');
-				pks 		= val(1:2);
-				pksLocs	= pksLocs(I);
-				pksLocs	= pksLocs(1:2);
+locs = reshape(locs,2,numel(locs)/2);
 
-		end
+duration = diff(locs);
 
-		[locs] = find(abs(diff((dataBp>thr))));
-		dataBpDer = -savitzkyGolayFilt(dataBp,4,1,11);
-		locsDer = dataBpDer(locs);
-		
-		if(locsDer(1)<0),locs(1)=[];end
-		if(locsDer(end)>0),locs(end)=[];end
+locs = locs(:,duration>0.8*fs);
 
-		if globDebug
-				plot(dataBp,'r');
-				plot(locs,dataBp(locs),'ko');
-		end
+newloc = [];
 
-	 
-		locs = reshape(locs,2,numel(locs)/2);
-		
-		duration = diff(locs);
-		
-		locs = locs(:,duration>0.8*fs);
-        
-		newloc = [];
-		
- 		if(size(locs,2)/numel(pks)~=1) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
-				for i=1:numel(pks)
-						loc = locs(abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
-						startLoc = find(loc-pksLocs(i)<0,1,'first');
-						endLoc = find(loc-pksLocs(i)>0,1,'last');
-						loc = [loc(startLoc) loc(endLoc)];
-						if ~isempty( loc )
-							newloc = [newloc loc];
-						end
-				end
- 		else
- 				newloc = locs(:);
- 		end
-          
-		newloc = sort(newloc,'ascend');
+% 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
+for i=1:numel(pks)
+    loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
+    startLoc = find(loc-pksLocs(i)<0,1,'first');
+    endLoc = find(loc-pksLocs(i)>0,1,'last');
+    loc = [loc(startLoc) loc(endLoc)];
+    if ~isempty( loc )
+        newloc = [newloc loc];
+    end
+end
+% 		else
+% 				newloc = locs;
+% 		end
 
-		if globDebug
-				plot(newloc,dataBp(newloc),'kx','MarkerSize',5);
-		end
+newloc = sort(newloc,'ascend');
+
+if globDebug
+    plot(newloc,dataBp(newloc),'kx','MarkerSize',5);
+end
+
 
 
 end
@@ -514,7 +527,7 @@ function tau = manualTENS(D,method)
 %
 	warnMessage = sprintf('You should pick only %d point(s)',method);
 	warndlg(warnMessage);
-	f1 = figure;
+	f1 = figure(get(gcf,'Number')+1),clf;
 	imf = ceemdan(D,0.0002,20,100,1);
 	plot(bsxfun(@plus,imf,max(imf(:))*(1:(size(imf,1)))')')
 	addCrossair(f1);
@@ -549,6 +562,5 @@ function data = cutInitialSamplesData(data,offset,fs)
 %CUTINITIALSAMPLESDATA Description
 %	DATA = CUTINITIALSAMPLESDATA(DATA,OFFSET,FS) Long description
 %
-	data = data(:,(offset*fs)+1:end);
-
+	data = data(:,(offset(1)*fs)+1:end-(offset(2)*fs));
 end

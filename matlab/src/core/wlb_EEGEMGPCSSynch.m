@@ -96,12 +96,13 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						[eegHdr, eegData] = wlb_readBrainvision( eegFname );
 					 
 						% cut data if needed
-        pcsData = pcsData(:,(p.Results.pcsCuttingTime(1)*...
-            pcsHdr.SenseChannelConfig.TDSampleRate)+1:end-(p.Results.pcsCuttingTime(2)*...
-            pcsHdr.SenseChannelConfig.TDSampleRate));
-        emgData = emgData(:,(p.Results.emgCuttingTime(1)*emgHdr.freq)+1:end-...
-            (p.Results.emgCuttingTime(2)*emgHdr.freq));
-						
+%         pcsData = pcsData(:,(p.Results.pcsCuttingTime(1)*...
+%             pcsHdr.SenseChannelConfig.TDSampleRate)+1:end-(p.Results.pcsCuttingTime(2)*...
+%             pcsHdr.SenseChannelConfig.TDSampleRate));
+%         emgData = emgData(:,(p.Results.emgCuttingTime(1)*emgHdr.freq)+1:end-...
+%             (p.Results.emgCuttingTime(2)*emgHdr.freq));
+        pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,eegHdr.SenseChannelConfig.TDSampleRate);
+        emgData = cutInitialSamplesData(emgData,p.Results.emgCuttingTime,eegHdr.freq);
         eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
                         
                         
@@ -162,13 +163,16 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 										
 						if( method == 2 )
 								t0 = reshape([t0{:}],2,3)';
-
 								% estimate the correct fs for PCS
 								pcsFs = (t0(2,2)-t0(2,1))* eegHdr.Fs /(t0(1,2)-t0(1,1));
 						else
 								t0 = [t0{:}]';
 								t0(:,2) = [length(eegCh) length(pcsCh) length(emgCh)];
-								pcsFs = 793.65;
+                                if pcsHdr.SenseChannelConfig.TDSampleRate > 422
+                                    pcsFs = 793.65;
+                                else
+                                    pcsFs = 422;
+                                end
 						end
 						
 						% remove the padded samples
