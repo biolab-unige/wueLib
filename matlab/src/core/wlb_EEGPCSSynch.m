@@ -20,28 +20,28 @@ function status = wlb_EEGPCSSynch(varargin)
 		p.addOptional('pcsCuttingTime',0,@isnumeric);
 		p.addOptional('eegCuttingTime',0,@isnumeric);
 		p.addOptional('automaticDetection',true,@islogical);
-        p.addOptional('find_tens_pctg',80,@isnumeric);
+    p.addOptional('findTensPctg',80,@isnumeric);
 		
-        p.parse(varargin{:});
+    p.parse(varargin{:});
 
 		pathPcs = p.Results.pathPcs;
 		pathHdeeg = p.Results.pathHdeeg;
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fnameFilters;
-        pctg=p.Results.find_tens_pctg;
+    pctg = p.Results.findTensPctg;
 		% get filenames within each path
 		pcsFileNames = dir(fullfile(pathPcs,'*pcs*.xml'));
 		eegFileNames = dir(fullfile(pathHdeeg,'*.eeg'));
 
 		eveFileNames = dir(fullfile(pathEvents,'*event*.csv'));
 
-		assert(checkDataConsistency(pcsFileNames,eegFileNames),...
+		assert(wlb_checkDataConsistency(pcsFileNames,eegFileNames),...
 				'Number of hdeeg files and pcs files do not match');
 
 
 		if ~isempty(fnameFilters{1})
-				pcsFileNames = filterFnames(pcsFileNames,fnameFilters);
-				eegFileNames = filterFnames(eegFileNames,fnameFilters);
+				pcsFileNames = wlb_filterFnames(pcsFileNames,fnameFilters);
+				eegFileNames = wlb_filterFnames(eegFileNames,fnameFilters);
 		end
 
 		for fileIdx =1:numel(pcsFileNames)
@@ -53,8 +53,8 @@ function status = wlb_EEGPCSSynch(varargin)
 				% subject_studyName_drug_trial##_modality.**
 				drugCondition = regexp(pcsFname,'_','split');
 
-				% pick drug string
-				drugCondition = drugCondition{3};
+			 	% pick drug string
+    		drugCondition = drugCondition{  ~cellfun(@isempty,(regexp(drugCondition,'(off|on)'))) };
 
 				trialIdx = cell2mat(regexp(pcsFname,'trial\d+','match'));
 				if isempty( trialIdx ) 
@@ -80,15 +80,13 @@ function status = wlb_EEGPCSSynch(varargin)
 					eventsInfo = wlb_readExternalEventFile( eveFname, trialIdx );
 				end
 
-%				try
+				try
 						% read pcs header file
 						[pcsHdr, pcsData] = wlb_readActivaPC( pcsFname );
 						[eegHdr, eegData,vmrk_event] = wlb_readBrainvision( eegFname );
 						% cut data if needed
-% 						pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,...
-% 								pcsHdr.SenseChannelConfig.TDSampleRate);
-                        pcsData = cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,pcsHdr.SenseChannelConfig.TDSampleRate);
-						eegData = cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
+            pcsData = wlb_cutInitialSamplesData(pcsData,p.Results.pcsCuttingTime,pcsHdr.SenseChannelConfig.TDSampleRate);
+						eegData = wlb_cutInitialSamplesData(eegData,p.Results.eegCuttingTime,eegHdr.SamplingInterval);
 
 						% define TENS channels
 						pcsChIdx = p.Results.pcsRefChannel;
@@ -103,8 +101,8 @@ function status = wlb_EEGPCSSynch(varargin)
 						eegCh = eegData(eegChIdx,:);
 						
 						% find time windows containing TENS
-						pcsLocs = findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate,pctg);
-						eegLocs = findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval,pctg);
+						pcsLocs = wlb_findTENSArtefact(pcsData(pcsChIdx,:),pcsHdr.SenseChannelConfig.TDSampleRate,pctg);
+						eegLocs = wlb_findTENSArtefact(eegData(eegChIdx,:),eegHdr.SamplingInterval,pctg);
 						
 						method = min([length(eegLocs)/2,length(pcsLocs)/2]);
 						
@@ -112,11 +110,11 @@ function status = wlb_EEGPCSSynch(varargin)
 						dataCell = [{eegCh},{pcsCh}];
 
 						if p.Results.automaticDetection	                        
-                            t0 = cellfun(@findTInit,dataCell,{eegLocs,pcsLocs},...
+                            t0 = cellfun(@wlb_findTInit,dataCell,{eegLocs,pcsLocs},...
 									{eegHdr.Fs,pcsHdr.SenseChannelConfig.TDSampleRate},...
 									{method, method},'uni',false);
                         else
-                            t0 = cellfun(@manualTENS,dataCell,{method,method},'uni',false);
+                            t0 = cellfun(@wlb_manualTENS,dataCell,{method,method},'uni',false);
                         end
                         
 							 
@@ -137,7 +135,7 @@ function status = wlb_EEGPCSSynch(varargin)
 						
 						% downsample pcs data to integer sampling frequency and eeg accordingly
 						fs 						= 400;
-						[pcsData,~,~] = ResampleCascade(pcsData,fs,pcsFs);
+						[pcsData,~,~] = wlb_resampleCascade(pcsData,fs,pcsFs);
 						eegData 			= resample(eegData',fs,eegHdr.Fs)';
 						
 						% each t0 row represent eeg,pcs,emg data before
@@ -187,7 +185,7 @@ function status = wlb_EEGPCSSynch(varargin)
 						end
 						
 						pcsHdr.labels(end+1) = {'none'};
-						pcsHdr.chanunit(1:2) = {'muV'};
+						pcsHdr.chanunit(1:2) = {'mV'};
 
 						outHdr.chanunit = [eegHdr.chanunit, pcsHdr.chanunit];
 
@@ -195,16 +193,16 @@ function status = wlb_EEGPCSSynch(varargin)
 								figure(1), clf
 								subplot(311)
 								plot(eegData(eegChIdx,[-100:100] + t0(1))/...
-                                    max(abs(eegData(eegChIdx,[-100:100] + t0(1))))),
+                  max(abs(eegData(eegChIdx,[-100:100] + t0(1))))),
 								hold on, plot(pcsData(pcsChIdx,[-100:100] + t0(2))/...
-                                    max(abs(pcsData(pcsChIdx,[-100:100] + t0(2)))),'r');
+                  max(abs(pcsData(pcsChIdx,[-100:100] + t0(2)))),'r');
 
 								if(method == 2)
 										subplot(312)
 								plot(eegData(eegChIdx,[-100:100] + t0(1))/...
-                                    max(abs(eegData(eegChIdx,[-100:100] + t0(3))))),
+                  max(abs(eegData(eegChIdx,[-100:100] + t0(3))))),
 								hold on, plot(pcsData(pcsChIdx,[-100:100] + t0(4))/...
-                                    max(abs(pcsData(pcsChIdx,[-100:100] + t0(2)))),'r');
+                  max(abs(pcsData(pcsChIdx,[-100:100] + t0(2)))),'r');
 								end
 								subplot(313),
 								plot(dataOut([eegChIdx end-1:end],:)');
@@ -254,25 +252,25 @@ function status = wlb_EEGPCSSynch(varargin)
 						% no additional calibration needed, since float32
 						outHdr.resolution      = ones(size(outHdr.label));      
 
-%				catch ME
-%						fprintf('%s\n',ME.message);
-%						continue;
-%				end
+				catch ME
+						fprintf('%s\n',ME.message);
+						continue;
+				end
 
 				% write data
 				[~, fnamePcs, ~] = fileparts(pcsFname);
 				filename = strcat(fnamePcs,'Eeg');
 				
 				outHdr.DataFile = strcat(filename,'.eeg');
-                outHdr.MarkerFile = strcat(filename,'.vmrk');								
-				
-                write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
+				outHdr.MarkerFile = strcat(filename,'.vmrk');								
 
-                if(~isempty(eventsInfo))
-                    write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);
-                else
-                    write_brainvision_vmrk(p.Results.outdir, outHdr, vmrk_event);
-                end
+				write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
+
+				if(~isempty(eventsInfo))
+						write_brainvision_vmrk(p.Results.outdir, outHdr, eventsInfo);
+				else
+						write_brainvision_vmrk(p.Results.outdir, outHdr, vmrk_event);
+				end
 								
 				write_brainvision_vhdr(p.Results.outdir, outHdr);
 					
@@ -282,285 +280,3 @@ function status = wlb_EEGPCSSynch(varargin)
 
 
 end % function
-
-function tau = findTInit(D,locs,~,chunks)
-%FINDTINIT Description
-%	TAU = FINDTINIT(D,LOCS,CHUNKS) Long description
-%
-
-		% number of levels used for WICA and wavelet family
-		numLvl    = 8;
-		vfilter   = 'db1';
-		tau 			= nan(2,1);
-
-
-		for chunk = 0:chunks-1
-				
-				artefactIdx	= round(locs(1+(2*chunk))):round(locs(2+(2*chunk))) ;
-
-				artefactIdx(artefactIdx > numel(D)) = [];
-				artefactIdx(artefactIdx < 1) = [];
-				data 				= D(artefactIdx);
-
-				nsamples    = length(data);
-				offset      = ceil(nsamples/(2^numLvl)) * (2^numLvl);
-				
-				data(nsamples+1:offset) = zeros(1,offset-nsamples);
-						
-
-				[thr] = 0.5*ddencmp('den','wv',data);
-				
-				[swa, swd] = swt(data,numLvl, vfilter);
-
-				swd(abs(swd) < thr) = 0;
-				swd(3:numLvl,:) = zeros(size(swd(3:numLvl,:)));
-				swa = zeros(size(swa));
-				
-				out = iswt(swa,swd,vfilter)';
-				out = out(1:nsamples);
-				thresh = 2*std(abs(out));
-				
-				out( abs(out) <  std(abs(out)) ) = 0;
-				
-				[~, maxLocs] = findpeaks(abs((out)),'MINPEAKHEIGHT',thresh);
-				dataLocs = max(maxLocs);				
-			
-				tau(chunk+1) = dataLocs + artefactIdx(1)-1;
-
-		end
-		tau(isnan(tau)) = [];
-		figure(get(gcf,'Number')+1),clf
-		plot(D) , hold on, plot(tau,D(tau),'rx');
-
-end
-
-function [x,Pfac,Qfac] = ResampleCascade(x,NewRate,OldRate,Method)
-    % Default method: 'resample'
-    if (nargin < 4)
-        Method = 'resample';
-    end
-    % Common factors
-    [P,Q] = rat(NewRate/OldRate);
-    % We want to upsample by P and downsample by Q to achieve the new rate
-    % But big numbers cause problems.
-    Pfac = factor(P);
-    Qfac = factor(Q);
-    % Longest number of factors
-    iFacs = max(length(Pfac),length(Qfac));
-    % Pad the shorter one to have unity factors
-    Pfac((length(Pfac)+1):iFacs) = 1;
-    Qfac((length(Qfac)+1):iFacs) = 1;
-
-    % So now we have two factorization lists of the same length, and
-    % prod(Pfac) / prod(Qfac) = P/Q.
-    Pfac = sort(Pfac,'descend'); % upsample largest first
-    Qfac = sort(Qfac,'ascend'); % downsample smallest rates first
-    Rates = Pfac./Qfac;  % rates per step
-    CRate = cumprod(Rates); % cumulative resampling rates
-
-    % We can't go below min(1,P/Q) without losing information. Because of low-pass filtering, 
-		% don't be too precise
-    Problem = CRate < (0.9 * P/Q);
-    if any(Problem)
-        fprintf(1, 'RESAMPLE> Warning: Desired rate is %.f\n', P/Q);
-    end
-    if any(Pfac > 10)
-        disp(['RESAMPLE> Warning: Upsampling by more than 10 in the cascades, P = ' sprintf('%d ', Pfac)]);
-    end
-    if any(Qfac > 10)
-        disp(['RESAMPLE> Warning: Downsampling by more than 10 in the cascades, Q = ' sprintf('%d ', Qfac)]);
-    end
-
-    % ===== RESAMPLING =====
-    switch Method
-        % Decimate/interp inputs cannot be vectorized
-        case 'decimate'
-            % Initialize output parameters
-            lenResmp = ceil(size(x,2) * prod(Pfac) / prod(Qfac));
-            nRow = size(x,1);
-            xResmp = zeros(nRow, lenResmp);
-            % Loop on factors and rows
-            for iRow = 1:size(x,1)
-                xTmp = x(iRow,:);
-                for i = 1:iFacs
-                    xTmp = decimate(interp(xTmp, Pfac(i)), Qfac(i));
-                end
-                xResmp(iRow,:) = xTmp;
-            end
-            x = xResmp;
-        % Resample takes vectorized inputs
-        case 'resample'
-            for i = 1:iFacs
-                x = resample(x', Pfac(i), Qfac(i))';
-            end
-    end
-end
-
-function fnames = filterFnames(fnames,pattern)
-%FILTERFNAMES Description
-%	FNAME = FILTERFNAMES(FNAMES,PATTERN) Long description
-%
-		tmp = {fnames.name};
-		mask= zeros(numel(tmp),numel(pattern));
-
-		for el = 1:numel(tmp)
-			mask(el,:) = ~cellfun(@isempty,regexp(tmp(el),pattern));
-		end
-
-		mask = logical(prod(mask,2));
-
-		fnames = fnames(mask);
-end
-
-function bool = checkDataConsistency(fnameMod1, fnameMod2)
-%CHECKDATACONSISTENCY Description
-%	BOOL = CHECKDATACONSISTENCY(FNAMEMOD1, FNAMEMOD2) Long description
-%
-
-		fnameMod1 = {fnameMod1.name};
-		fnameMod2 = {fnameMod2.name};
-
-		[~,mod1,~] = cellfun(@fileparts,fnameMod1,'uni',false);
-		[~,mod2,~] = cellfun(@fileparts,fnameMod2,'uni',false);
-
-		nMod1Files = numel(mod1);
-		nMod2Files = numel(mod2);
-
-		nMatchingFiles = sum(ismember(mod1,mod2));
-
-		if nMod1Files == nMod2Files || nMatchingFiles == nMod1Files
-				bool = true;
-		else
-				bool = false;
-		end
-end
-
-
-function newloc = findTENSArtefact(data, fs,pctg)
-%FINDTENSARTEFACT data [1xN] time samples
-%	LOCS = FINDTENSARTEFACT(DATA) Long description
-global globDebug
-if globDebug
-    figure(get(gcf,'Number')+1),clf, plot(data.*1e-2), hold on;
-end
-data = abs(data);
-
-dataBp = wlb_bandpass_fft(data, fs, 90, 110,1,1,[]);
-if fs < 700
-    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 200, 1,1,[]);
-    
-end
-if fs > 700
-    dataBp(:,:,2) = wlb_bandpass_fft(data, fs, 190, 210, 1,1,[]);
-    dataBp(:,:,3) = wlb_bandpass_fft(data, fs, 290, 310, 1,1,[]);
-    
-end
-dataBp = wlb_bandpass_fft(mean(abs(dataBp(:,:,:)),3), fs, 0.001, 1, 1,1,[]);
-
-thr = prctile(dataBp,pctg);
-while(thr<0)
-    pctg = pctg +1;
-    thr = prctile(dataBp,pctg);
-end
-
-[pks,pksLocs] = findpeaks(dataBp,'MINPEAKHEIGHT',thr,'MINPEAKDISTANCE',10*fs);
-if(length(pksLocs)>2)
-    % in general we should have only two tens
-    % but we might end up with some weird artefacts
-    
-    
-    [val,I] = sort(pks,'descend');
-    pks 		= val(1:2);
-    pksLocs	= pksLocs(I);
-    pksLocs	= pksLocs(1:2);
-    
-end
-
-[locs] = find(abs(diff((dataBp>thr))));
-dataBpDer = -savitzkyGolayFilt(dataBp,4,1,11);
-locsDer = dataBpDer(locs);
-
-if(locsDer(1)<0),locs(1)=[];end
-if(locsDer(end)>0),locs(end)=[];end
-
-if globDebug
-    plot(dataBp,'r');
-    plot(locs,dataBp(locs),'ko');
-end
-
-
-locs = reshape(locs,2,numel(locs)/2);
-
-duration = diff(locs);
-
-locs = locs(:,duration>0.8*fs);
-
-newloc = [];
-
-% 		if(length(locs)/numel(pks)~=2) %ci sono piu di 2 intersezioni in uno o entrambi i picchi
-for i=1:numel(pks)
-    loc = locs( abs(locs-pksLocs(i))<5*fs ); %cerco le intersezioni piu vicine al picco
-    startLoc = find(loc-pksLocs(i)<0,1,'first');
-    endLoc = find(loc-pksLocs(i)>0,1,'last');
-    loc = [loc(startLoc) loc(endLoc)];
-    if ~isempty( loc )
-        newloc = [newloc loc];
-    end
-end
-% 		else
-% 				newloc = locs;
-% 		end
-
-newloc = sort(newloc,'ascend');
-
-if globDebug
-    plot(newloc,dataBp(newloc),'kx','MarkerSize',5);
-end
-
-
-
-end
-
-function tau = manualTENS(D,method)
-%MANUALTENS Description
-%	TAU = MANUALTENS(D,locs) Long description
-%
-	warnMessage = sprintf('You should pick only %d point(s)',method);
-	warndlg(warnMessage);
-	f1 = figure(get(gcf,'Number')+1),clf;
-	imf = ceemdan(D,0.0002,20,100,1);
-	plot(bsxfun(@plus,imf,max(imf(:))*(1:(size(imf,1)))')')
-	addCrossair(f1);
-
-	waitfor(f1)
-
-	tau = evalin('base','cursorValue');
-	
-
-end
-
-
-function mask = ismemberWildcards(stringsIn, patterns)
-%ISMEMBERWILDCARDS Description
-%	MASK = ISMEMBERWILDCARDS(STRINGSIN, PATTERNS) Long description
-%
-	
-	nStrings = numel(stringsIn);
-	nPatterns= numel(patterns);
-
-	mask = cellfun(@(x) regexp(x,patterns),stringsIn,'Uni',false);
-	mask = [mask{:}];
-	mask = reshape(mask,[nPatterns,nStrings]);
-	mask(cellfun(@isempty,mask)) = {0};
-
-	mask = cell2mat(mask);
-
-	mask = sum(mask) >= 1;
-end
-
-function data = cutInitialSamplesData(data,offset,fs)
-%CUTINITIALSAMPLESDATA Description
-%	DATA = CUTINITIALSAMPLESDATA(DATA,OFFSET,FS) Long description
-%
-	data = data(:,(offset(1)*fs)+1:end-(offset(2)*fs));
-end

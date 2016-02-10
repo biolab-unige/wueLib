@@ -10,9 +10,6 @@ function eventStruct = wlb_readExternalEventFile(filename, trialIdx)
 
 		[nEvents, nEventTypes] = size(eventsRaw.data);
 
-		% the first column represents the event indices (i.e. trial number)
-		% and should not be counted as an event class
-		% nEventTypes = nEventTypes-1;
 		if ~isempty(trialIdx)	
 				nEvents = numel(trialIdx); 
 		else

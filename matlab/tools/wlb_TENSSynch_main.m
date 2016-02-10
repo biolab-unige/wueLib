@@ -21,7 +21,7 @@ global globDebug;
 		p.addParamValue('automaticDetection',true,@islogical);
 		p.addParamValue('debug',false,@islogical);
 		p.addParamValue('pcsRefChannel',2,@isnumeric);
-		p.addParamValue('find_tens_pctg',80,@isnumeric);
+		p.addParamValue('findTensPctg',80,@isnumeric);
 
 		p.parse(varargin{:});
 		recordingModalities = cell(1,3);
@@ -56,7 +56,7 @@ global globDebug;
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fNameFilters;
 		automaticDetection = p.Results.automaticDetection;
-        find_tens_pctg = p.Results.find_tens_pctg;
+        findTensPctg = p.Results.findTensPctg;
         pcsRefChannel = p.Results.pcsRefChannel;
         
 		if(isempty(p.Results.outdir))
@@ -82,21 +82,21 @@ global globDebug;
 
 		switch recordingModalities
 				case 'eeg_emg'
-						status = wlb_EEGEMGSynch(pathHdeeg,pathEmg);
+						%status = wlb_EEGEMGSynch(pathHdeeg,pathEmg);
 				case 'eeg_emg_pcs'
 						status = wlb_EEGEMGPCSSynch(pathHdeeg,pathEmg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime,...
-												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
+												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
                                                 'pcsRefChannel',pcsRefChannel);
 				case 'emg_pcs'
 						status = wlb_EMGPCSSynch(pathEmg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime,...
-												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
+												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
                                                 'pcsRefChannel',pcsRefChannel);
 				case 'eeg_pcs'
 						status = wlb_EEGPCSSynch(pathHdeeg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'eegCuttingTime',eegCuttingTime,...
-												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
+												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
                                                 'pcsRefChannel',pcsRefChannel);
 				otherwise
 						error('Unsupported modality');
