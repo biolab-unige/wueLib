@@ -128,7 +128,7 @@ for fileIdx = 1 : numel(pcsFileNames)
             pcsFs = ((t0(1,2)-t0(1,1))* emgHdr.freq) /(t0(2,2)-t0(2,1));
         else
             t0 = [t0{:}]';
-            % use default
+            % use default sampling frequency
             t0(:,2) = [length(pcsCh) length(emgCh)];
             if pcsHdr.SenseChannelConfig.TDSampleRate > 422
                 pcsFs = 793.65;
@@ -142,7 +142,7 @@ for fileIdx = 1 : numel(pcsFileNames)
         [pcsData,~,~] 	= wlb_resampleCascade(pcsData,fs,pcsFs);
         emgData 				= resample(emgData',fs,emgHdr.freq)';
         
-        % each t0 row represent eeg,pcs,emg data before
+        % each t0 row represent eeg,pcs,emg data 
         % we have to recompute the exact point in time after
         % resampling
         t0(2,:) = (round(t0(2,:)/emgHdr.freq*pcsFs));
@@ -151,13 +151,13 @@ for fileIdx = 1 : numel(pcsFileNames)
         % also compute the sample indices fo each events with new sampling freq
         for evIdx = 1:numel(eventsInfo)
             
-            if (eventsInfo(evIdx).times >=0)
+%            if (eventsInfo(evIdx).times >=0)
                 eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ min(t0(:,1));
                 eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
-            else
-                eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ max(t0(:,1));
-                eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + max(t0(:,1))/fs;
-            end
+%            else
+%                eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ min(t0(:,1));
+%                eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
+%            end
             
         end
         
@@ -167,15 +167,15 @@ for fileIdx = 1 : numel(pcsFileNames)
         pcsDataOut 	= pcsData(:,max(1,t0(1,1)-t0(2,1)):end);
         emgDataOut 	= emgData(:,max(1,t0(2,1)-t0(1,1)):end);
         
-        finalSize   	= min([size(pcsDataOut,2),size(emgDataOut,2)]);
+        finalSize  	= min([size(pcsDataOut,2),size(emgDataOut,2)]);
         
         pcsDataOut 	= pcsDataOut(:,1:finalSize);
         emgDataOut 	= emgDataOut(:,1:finalSize);
         
-        dataOut 	 		= [pcsDataOut;emgDataOut];
+        dataOut 	 	= [pcsDataOut;emgDataOut];
         
         pcsChannels	= size(pcsData,1);
-        emgChannels  = size(emgData,1);
+        emgChannels = size(emgData,1);
         
         if(pcsChannels == 1)
             dataOut  = [dataOut; zeros(1,size(dataOut,2))];
@@ -215,7 +215,7 @@ for fileIdx = 1 : numel(pcsFileNames)
         
         % update header info
         outHdr.label 	= [pcsHdr.labels';emgHdr.labels'];
-        outHdr.nChans 	= pcsChannels + emgChannels;
+        outHdr.nChans = pcsChannels + emgChannels;
         outHdr.NumberOfChannels = outHdr.nChans;
         outHdr.Fs			= fs;
         outHdr.chanunit(outHdr.nChans) = {'mV'};
@@ -265,5 +265,6 @@ for fileIdx = 1 : numel(pcsFileNames)
 end % for files
 
 status = 0;
+
 end % function
 

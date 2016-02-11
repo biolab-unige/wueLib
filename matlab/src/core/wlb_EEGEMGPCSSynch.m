@@ -192,14 +192,14 @@ function status = wlb_EEGEMGPCSSynch(varargin)
 						% also compute the sample indices for each events with new sampling freq
 						for evIdx = 1:numel(eventsInfo)
 							
-							if (eventsInfo(evIdx).times >=0)
+%							if (eventsInfo(evIdx).times >=0)
 								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ min(t0(:,1));						
-                                eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
+                eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + min(t0(:,1))/fs;
 
-							else
-								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ max(t0(:,1));
-								eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + max(t0(:,1))/fs;
-							end
+%							else
+%								eventsInfo(evIdx).samples = round(eventsInfo(evIdx).times * fs)+ max(t0(:,1));
+%								eventsInfo(evIdx).times	 = eventsInfo(evIdx).times + max(t0(:,1))/fs;
+%							end
 
 						end
 
