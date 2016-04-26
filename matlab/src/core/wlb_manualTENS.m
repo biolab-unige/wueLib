@@ -12,10 +12,7 @@ function tau = manualTENS(D,method)
 	waitfor(f1)
 
 	tau = evalin('base','cursorValue');
+	size(tau)
 	
 
 end
-
-
-
-function

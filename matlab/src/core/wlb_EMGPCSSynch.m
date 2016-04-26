@@ -28,7 +28,7 @@ fnameFilters = p.Results.fnameFilters;
 pctg=p.Results.findTensPctg;
 % get filenames within each path
 pcsFileNames = dir(fullfile(pathPcs,'*pcs.xml'));
-emgFileNames = dir(fullfile(pathEmg,'*emg.txt'));
+emgFileNames = dir(fullfile(pathEmg,'*emg*'));
 
 eveFileNames = dir(fullfile(pathEvents,'*event*.csv'));
 
@@ -69,10 +69,22 @@ for fileIdx = 1 : numel(pcsFileNames)
         eventsInfo = wlb_readExternalEventFile( eveFname, trialIdx );
     end
     
-    try
+%    try
         % read pcs header file
         [pcsHdr, pcsData] = wlb_readActivaPC( pcsFname );
-        [emgHdr, emgData] = wlb_readEMG_wue( emgFname );
+
+				% read emg file
+				if( strfind(emgFname,'.txt') )
+	        [emgHdr, emgData] = wlb_readEMG_wue( emgFname );
+				elseif( strfind( emgFname, '.tdf') )
+						[~,freq,emgMap,emgLabels,emgData] = tdfReadDataEmg(emgFname);
+						emgHdr.freq = freq;
+						emgLabels = mat2cell(emgLabels,ones(size(emgData,1),1),256);
+						emgHdr.labels = deblank(emgLabels)';
+						emgHdr.units = 'mV';
+
+				end
+
         
         % cut data if needed
         pcsData = pcsData(:,(p.Results.pcsCuttingTime(1)*...
@@ -84,7 +96,7 @@ for fileIdx = 1 : numel(pcsFileNames)
         % pick the first channel
         pcsChIdx = p.Results.pcsRefChannel;
         emgChIdx = find(wlb_ismemberWildcards(lower(emgHdr.labels),...
-            {'artefa.t_pulse','tens_pulse'})==1 );
+            {'artefa.t_pulse','tens_pulse','emg signal 2'})==1 );
         
         if isempty(pcsChIdx ) || isempty(emgChIdx)
             error('Invalid reference channel');
@@ -144,7 +156,7 @@ for fileIdx = 1 : numel(pcsFileNames)
         
         % each t0 row represent eeg,pcs,emg data 
         % we have to recompute the exact point in time after
-        % resampling
+        % resamplingil pb è che per usare quello 
         t0(2,:) = (round(t0(2,:)/emgHdr.freq*pcsFs));
         t0 			= round(t0/pcsFs*fs);
         
@@ -225,7 +237,6 @@ for fileIdx = 1 : numel(pcsFileNames)
             'sph_theta_besa',-134,...
             'sph_phi_besa',-45);
         
-        
         emgPosStruct = struct('type','emg',...
             'labels',emgHdr.labels,...
             'sph_theta_besa',-134,...
@@ -242,17 +253,16 @@ for fileIdx = 1 : numel(pcsFileNames)
         % no additional calibration needed, since float32
         outHdr.resolution      = ones(size(outHdr.label));
         
-    catch ME
-        fprintf('%s\n',ME.message);
-        continue;
-    end
+%    catch ME
+%        fprintf('%s\n',ME.message);
+%        continue;
+%    end
     % write data
     [~, fnamePcs, ~] = fileparts(pcsFname);
     filename = strcat(fnamePcs,'Emg');
     
     outHdr.DataFile = strcat(filename,'.eeg');
     outHdr.MarkerFile = '';
-    
     write_brainvision_eeg(p.Results.outdir, outHdr, dataOut);
     if(~isempty(eventsInfo))
         outHdr.MarkerFile = strcat(filename,'.vmrk');
@@ -267,4 +277,3 @@ end % for files
 status = 0;
 
 end % function
-

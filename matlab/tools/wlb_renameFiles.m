@@ -64,8 +64,8 @@ for file = 1:numel(fileNamesPcs)
 				oldFileName_ = fullfile(lower(subjectNames{file}),fileNamesEmg{file});
 				newFileNameEmg = fullfile(lower(subjectNames{file}),newFileNameEmg);
 				
-				oldFileName = strcat(oldFileName_,'.txt');
-				newFileName = strcat(newFileNameEmg,'.txt');
+				oldFileName = strcat(oldFileName_,'.tdf');
+				newFileName = strcat(newFileNameEmg,'.tdf');
 				[s, mesg] = movefile(fullfile(csvMatchFilePath,oldFileName),...
 						fullfile(csvMatchFilePath,newFileName));
 				if(~s)
