@@ -72,12 +72,12 @@ hdr.labels = labels;
 hdr.recordingChannels = numel(labels);
 hdr.SenseChannelConfig.TDSampleRate = cellfun(@str2num,(regexp(hdr.SenseChannelConfig.TDSampleRate.toCharArray','\d+','match')));
 hdr.hemiFlag = hemisphere;
-
+hdr.chantype = repmat({'stn'},chan_num,1);
 
 % read
 data = importdata(fullfile(p,filesep,strcat(f,'.txt')));
 data = data(:,sum(data,1) > 0); 
 
 data = data';
-
+hdr.nSamples = size(data,2);
 end

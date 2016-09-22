@@ -21,7 +21,8 @@ global globDebug;
 		p.addParamValue('automaticDetection',true,@islogical);
 		p.addParamValue('debug',false,@islogical);
 		p.addParamValue('pcsRefChannel',2,@isnumeric);
-		p.addParamValue('findTensPctg',80,@isnumeric);
+		p.addParamValue('emgRefChannel','pulse',@ischar);
+		p.addParamValue('find_tens_pctg',80,@isnumeric);
 
 		p.parse(varargin{:});
 		recordingModalities = cell(1,3);
@@ -56,8 +57,9 @@ global globDebug;
 		pathEvents = p.Results.pathEvents;
 		fnameFilters = p.Results.fNameFilters;
 		automaticDetection = p.Results.automaticDetection;
-        findTensPctg = p.Results.findTensPctg;
+        find_tens_pctg = p.Results.find_tens_pctg;
         pcsRefChannel = p.Results.pcsRefChannel;
+        emgRefChannel = p.Results.emgRefChannel;
         
 		if(isempty(p.Results.outdir))
 				% search for a non-empty directory between recordingModalities
@@ -82,21 +84,21 @@ global globDebug;
 
 		switch recordingModalities
 				case 'eeg_emg'
-						%status = wlb_EEGEMGSynch(pathHdeeg,pathEmg);
+						status = wlb_EEGEMGSynch(pathHdeeg,pathEmg);
 				case 'eeg_emg_pcs'
 						status = wlb_EEGEMGPCSSynch(pathHdeeg,pathEmg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime,...
-												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
-                                                'pcsRefChannel',pcsRefChannel);
+												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
+                                                'pcsRefChannel',pcsRefChannel,'emgRefChannel',emgRefChannel);
 				case 'emg_pcs'
 						status = wlb_EMGPCSSynch(pathEmg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'emgCuttingTime',emgCuttingTime,...
-												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
+												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
                                                 'pcsRefChannel',pcsRefChannel);
 				case 'eeg_pcs'
 						status = wlb_EEGPCSSynch(pathHdeeg,pathPcs,outdir,pathEvents,...
 												fnameFilters,'pcsCuttingTime',pcsCuttingTime,'eegCuttingTime',eegCuttingTime,...
-												'automaticDetection',automaticDetection,'findTensPctg',findTensPctg,...
+												'automaticDetection',automaticDetection,'find_tens_pctg',find_tens_pctg,...
                                                 'pcsRefChannel',pcsRefChannel);
 				otherwise
 						error('Unsupported modality');

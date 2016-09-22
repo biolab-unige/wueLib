@@ -30,7 +30,7 @@ fprintf(fid, '[Channel Infos]\r\n');
 % Fields are delimited by commas, some fields might be omitted (empty).
 % Commas in channel names should be coded as "\1", but are not supported here
 for i=1:hdr.NumberOfChannels
-  fprintf(fid, 'Ch%d=%s,,%g,%s,%s\r\n', i, hdr.label{i}, hdr.resolution(i),hdr.chanunit{i},hdr.chantype{i});
+  fprintf(fid, 'Ch%d=%s,,%g,%s,%s,%d\r\n', i, hdr.label{i}, hdr.resolution(i),hdr.chanunit{i},hdr.chantype{i},hdr.good_chan(i));
 end
 
 fprintf(fid, '\r\n');

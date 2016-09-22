@@ -86,11 +86,17 @@ if ~isempty(hdr.NumberOfChannels)
 %             warning('Unknown chanunit for channel %d in %s!', i, filename);
             hdr.chanunit{i} = 'uV';
         end
-        if(numel(t)==5)
+        if(numel(t)>=5)
             hdr.chantype{i} = t{5};
         else
             hdr.chantype{i} = 'eeg';
         end
+        if(numel(t)==6)
+            hdr.good_chan(i) = str2num(t{6});
+        else
+            hdr.good_chan(i) = 1;
+        end
+
         hdr.layout.pos(i).type = hdr.chantype{i};
         hdr.layout.pos(i).labels = hdr.label{i};
         hdr.layout.pos(i).sph_theta_besa = [];

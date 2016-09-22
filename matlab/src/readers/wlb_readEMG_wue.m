@@ -1,83 +1,64 @@
-function [hdr, data]= wlb_readEMG_wue(filename)
-% wlb_readEMG_wue
+function [hdr, data,eventStruct]= wlb_readEMG_wue(filename)
 
-% Edited 2014-09-19 by Gabriele Arnulfo <gabriele.arnulfo@gmail.com>
+eventStruct = [];
 
-		[p,f,~] = fileparts(filename);
+[p,f,e] = fileparts(filename);
 
-		fid = fopen(fullfile(p,[f,'.txt']),'r');
+if(strcmp(e,'.tdf'))
+    [startTime,frequency,emgMap,labels,data] = tdfReadDataEmg (filename);
+    hdr.nSamples = size(data,2);   
+    hdr.freq = frequency;
+    for i=1:numel(labels)
+       C = strsplit(labels{i},' ') ;
+       if((isempty(C{end})))
+           C{end} = '2';
+       end
+       labels{i} = cellfun(@(x)x(1),C);
+    end
+    
+    no_emg_idx = find(cellfun(@(x)not(isempty(x)),strfind(labels,'ES')));
+    [pxx,f] = pmtm(data(no_emg_idx,:)',3,[100:2:hdr.freq/2],hdr.freq);
+    [dum,idx] = sort(sum(pxx));
+    
+    pulse_idx = no_emg_idx(idx(2));
+    labels(pulse_idx) = strcat(labels(pulse_idx),'_pulse');
+    hdr.chantype(pulse_idx) = {'pulse'};
+    ecg_idx = no_emg_idx(idx(1));
+    labels(ecg_idx) = strcat(labels(ecg_idx),'_ecg');
+    hdr.chantype(ecg_idx) = {'ecg'};
+    emg_idx = setdiff([1:numel(labels)],[pulse_idx ecg_idx]);
+    labels(emg_idx) = strcat(labels(emg_idx),'_emg');
+    hdr.labels = labels;
+    hdr.chantype(emg_idx) = {'emg'};
+    
+    [startTime,frequency,gpMap,labels,gpData] = tdfReadDataGenPurpose (filename);
 
-		hdr.person 	= fgetl(fid);
-		hdr.sex			= fgetl(fid);
-		hdr.born		= fgetl(fid);
-		hdr.code    = fgetl(fid);
-		fgetl(fid);
-		hdr.record  = fgetl(fid);
-		% jump  Application Generic
-		fgetl(fid);
-		hdr.creation= fgetl(fid); %  03/07/2014 11:53:07
-		% jump Exercises   {
-		fgetl(fid);
-		% jump #   Name    Start,sec   Length,sec  Start time
-		fgetl(fid);
-		hdr.exercises = fgetl(fid); %1   Combined    0.000   23.800  11:52:34.38
-		%jump closing bracket
-		fgetl(fid);
-		fgetl(fid);
-		hdr.freq = sscanf(fgetl(fid),'%*s%d');
-		hdr.samples = sscanf(fgetl(fid),'%*s%d');
-		fgetl(fid);
-		stringS = textscan(fgetl(fid),'%s','delimiter','\t');
-		units	  = regexp(stringS{1},'m[V|s]','match');
-		units(cellfun(@isempty,units)) = {'unk'};
-		units = [units{:}];
-		labels = stringS{1};
-
-		miscPattern = [{'time'},{'art.f.*'},{'digital'},{'tens'}];
-		mask = cellfun(@(x)(regexp(x,miscPattern)),lower(labels),'Unif',false);
-		mask = [mask{:}];
-		mask(cellfun(@isempty,mask)) = {0};
-
-		% labels x patterns
-		mask = reshape(mask,[numel(miscPattern),numel(labels)])';
-		mask = cell2mat(mask);
-		mask = logical(sum(mask,2));
-
-		labels(mask) = strcat(labels(mask),'_pulse');
-		labels(~mask) = strcat(labels(~mask),'_emg');
-
-		mask = strfind(lower(labels),'ekg');
-		mask(cellfun(@isempty,mask)) = {0};
-		mask = logical([mask{:}]);
-		labels(mask) = {'EKG'};
-		labels = regexprep(labels,',m[V|s]','');
-		labels = regexprep(labels,'\s+','_');
-
-
-		% jump two lines to remove Calibr field which seems to be 
-		% useless
-		fgetl(fid);
-		fgetl(fid);
-
-		data = nan(hdr.samples,numel(labels));
-
-		for lines=1:hdr.samples
-				data(lines,:) = sscanf(fgetl(fid),'%f')';
-		end
-
-		data = data';
-		fclose(fid);
-
-		channelZeros = find(mean(data,2)==0);
-		data( channelZeros,:) = [];
-
-		% for some weird reasons we mihgt end up with an empyt
-		% labels due to random white spaces in the line
-		labels(channelZeros) = [];
-		units(channelZeros) = [];
-
-		hdr.n_chan = numel(labels);
-		hdr.units = units;
-		hdr.labels = labels';
-
+    IMU_channel = find(cellfun(@(x)not(isempty(x)),strfind(num2cell(labels,2),'IMU')));
+    if(not(isempty(IMU_channel)))
+        IMU_data = gpData(IMU_channel,:);
+        [pks,rise_locs] = findpeaks(diff(IMU_data),'Threshold',3);
+        [pks,fall_locs] = findpeaks(-diff(IMU_data),'Threshold',3);
+        locs = rise_locs + 0*round(fall_locs - rise_locs)/2;
+        if(not(isempty(locs)))
+            locs = locs +1;
+            nEvents = length(locs);
+            eventStruct.type	= repmat({'custom'},[1 nEvents]);
+            eventStruct.label 	= 'IMU';
+            eventStruct.samples = round(locs/frequency*hdr.freq);
+            eventStruct.times = (eventStruct.samples/hdr.freq);
+            eventStruct.epochs 	= ones(1,nEvents);
+            eventStruct.length 	= ones(1,nEvents);
+            eventStruct.chan_num = zeros(1,nEvents);
+        end
+    end
+elseif(strcmp(e,'.txt'))
+    [hdr, data]= txtReadDataEmg(filename);
+    for i=1:numel(hdr.labels)
+       C = strsplit(hdr.labels{i},'_') ;
+       labels{i} = cellfun(@(x)x(1),C(1:end-1));
+       hdr.chantype{i} = C{end};
+    end
+    hdr.nSamples = size(data,2);
+else
+    error('file emg not supported');
 end
